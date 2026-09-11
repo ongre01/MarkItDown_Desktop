@@ -4,17 +4,23 @@
 #include "ui_mainwindow.h"
 
 #include <QAction>
+#include <QCoreApplication>
 #include <QDir>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QList>
 #include <QMessageBox>
+#include <QMimeData>
 #include <QPlainTextDocumentLayout>
 #include <QSaveFile>
+#include <QStringList>
 #include <QTextBrowser>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTimer>
+#include <QUrl>
 
 namespace {
 
@@ -22,6 +28,36 @@ constexpr qsizetype EditorChunkSize = 32 * 1024;
 constexpr qsizetype MaximumEditorChunkSize = 64 * 1024;
 constexpr int EditorChunkDelayMilliseconds = 1;
 constexpr int PreviewUpdateDelayMilliseconds = 150;
+
+const QStringList &supportedDocumentExtensions()
+{
+    static const QStringList extensions{
+        QStringLiteral("pdf"),
+        QStringLiteral("docx"),
+        QStringLiteral("pptx"),
+        QStringLiteral("xlsx"),
+        QStringLiteral("xls"),
+        QStringLiteral("html"),
+        QStringLiteral("htm"),
+        QStringLiteral("csv"),
+        QStringLiteral("json"),
+        QStringLiteral("xml"),
+        QStringLiteral("txt")};
+
+    return extensions;
+}
+
+QString documentOpenFilter()
+{
+    QStringList patterns;
+    patterns.reserve(supportedDocumentExtensions().size());
+    for (const QString &extension : supportedDocumentExtensions()) {
+        patterns.append(QStringLiteral("*.%1").arg(extension));
+    }
+
+    return QCoreApplication::translate("MainWindow", "Documents (%1)")
+        .arg(patterns.join(QLatin1Char(' ')));
+}
 
 } // namespace
 
@@ -34,6 +70,9 @@ MainWindow::MainWindow(QWidget *parent)
     , m_previewUpdateTimer(new QTimer(this))
 {
     ui->setupUi(this);
+    setAcceptDrops(true);
+    ui->markdownEditor->setAcceptDrops(false);
+    ui->markdownPreview->setAcceptDrops(false);
     ui->contentSplitter->setStretchFactor(0, 1);
     ui->contentSplitter->setStretchFactor(1, 1);
     QTimer::singleShot(0, this, [this]() {
@@ -104,6 +143,50 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
+void MainWindow::dragEnterEvent(QDragEnterEvent *event)
+{
+    if (!isDocumentBusy() && event->mimeData()->hasUrls()) {
+        event->acceptProposedAction();
+        return;
+    }
+
+    event->ignore();
+}
+
+void MainWindow::dropEvent(QDropEvent *event)
+{
+    if (isDocumentBusy() || !event->mimeData()->hasUrls()) {
+        event->ignore();
+        return;
+    }
+
+    const QList<QUrl> urls = event->mimeData()->urls();
+    if (urls.size() != 1) {
+        QMessageBox::warning(
+            this,
+            tr("Open Document"),
+            tr(u8"한 번에 하나의 파일만 열 수 있습니다."));
+        event->ignore();
+        return;
+    }
+
+    const QUrl &url = urls.constFirst();
+    if (!url.isLocalFile()) {
+        QMessageBox::warning(
+            this,
+            tr("Open Document"),
+            tr(u8"로컬 파일만 열 수 있습니다."));
+        event->ignore();
+        return;
+    }
+
+    if (openDocument(url.toLocalFile())) {
+        event->acceptProposedAction();
+    } else {
+        event->ignore();
+    }
+}
+
 void MainWindow::openFile()
 {
     if (isDocumentBusy()) {
@@ -114,22 +197,58 @@ void MainWindow::openFile()
         this,
         tr("Open Document"),
         QString(),
-        tr("Documents (*.pdf *.docx *.pptx *.xlsx *.xls *.html *.htm *.csv *.json *.xml *.txt)"));
+        documentOpenFilter());
 
     if (filePath.isEmpty()) {
         return;
     }
 
+    openDocument(filePath);
+}
+
+bool MainWindow::openDocument(const QString &filePath)
+{
+    if (isDocumentBusy()) {
+        return false;
+    }
+
+    const QFileInfo fileInfo(filePath);
+    if (fileInfo.isDir()) {
+        QMessageBox::warning(
+            this,
+            tr("Open Document"),
+            tr(u8"폴더는 열 수 없습니다."));
+        return false;
+    }
+
+    if (!fileInfo.isFile()) {
+        QMessageBox::warning(
+            this,
+            tr("Open Document"),
+            tr(u8"파일을 열 수 없습니다."));
+        return false;
+    }
+
+    if (!supportedDocumentExtensions().contains(fileInfo.suffix(),
+                                                 Qt::CaseInsensitive)) {
+        QMessageBox::warning(
+            this,
+            tr("Open Document"),
+            tr(u8"지원하지 않는 파일 형식입니다."));
+        return false;
+    }
+
     invalidateRenderRequest();
 
     m_document = Document{};
-    m_document.sourceFilePath = QFileInfo(filePath).absoluteFilePath();
+    m_document.sourceFilePath = fileInfo.absoluteFilePath();
     m_document.status = DocumentStatus::Ready;
 
     replaceEditorDocument();
     ui->markdownPreview->clear();
 
     updateDocumentPresentation();
+    return true;
 }
 
 void MainWindow::convertFile()

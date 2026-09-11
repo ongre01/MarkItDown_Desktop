@@ -14,6 +14,8 @@ QT_END_NAMESPACE
 
 class DocumentController;
 class MarkdownDocumentRenderer;
+class QDragEnterEvent;
+class QDropEvent;
 class QTimer;
 
 class MainWindow : public QMainWindow
@@ -27,6 +29,10 @@ public:
 signals:
     void renderMarkdownRequested(quint64 requestId,
                                  const QString &markdown);
+
+protected:
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
 
 private slots:
     void openFile();
@@ -43,6 +49,7 @@ private slots:
 
 private:
     bool isDocumentBusy() const;
+    bool openDocument(const QString &filePath);
     bool saveMarkdownToFile(const QString &filePath);
     void replaceEditorDocument();
     void startEditorInsertion(const QString &markdown);
