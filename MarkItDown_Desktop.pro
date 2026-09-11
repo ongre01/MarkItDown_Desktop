@@ -11,10 +11,12 @@ CONFIG += c++17
 SOURCES += \
     main.cpp \
     mainwindow.cpp \
+    src/controller/DocumentController.cpp \
     src/markitdown/MarkItDownManager.cpp
 
 HEADERS += \
     mainwindow.h \
+    src/controller/DocumentController.h \
     src/markitdown/MarkItDownManager.h \
     src/model/Document.h
 

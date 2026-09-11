@@ -11,6 +11,8 @@ class MainWindow;
 }
 QT_END_NAMESPACE
 
+class DocumentController;
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -21,11 +23,16 @@ public:
 
 private slots:
     void openFile();
+    void convertFile();
+    void onConversionStarted();
+    void onConversionFinished(const QString &markdown);
+    void onConversionFailed(const QString &error);
 
 private:
     void updateDocumentPresentation();
 
     Ui::MainWindow *ui;
+    DocumentController *m_controller;
     Document m_document;
 };
 #endif // MAINWINDOW_H

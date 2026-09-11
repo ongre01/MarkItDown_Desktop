@@ -10,9 +10,15 @@
 - 하나의 변환이 시작 중이거나 실행 중이면 추가 요청을 시작하지 않고 `Another conversion is already running.` 실패 신호를 보낸다.
 - 동일한 프로세스 오류에 대해 `errorOccurred`와 `finished`가 모두 발생해도 실패 신호를 중복 전달하지 않는다.
 
-## 런타임 전제
+## MarkItDown CLI 탐색
 
-`MarkItDownManager`는 실행 환경의 `PATH`에서 `markitdown` 실행 파일을 찾는다. 개발 환경에서는 저장소의 Python 가상 환경을 사용하는 경우 `build\python-venv\Scripts`를 애플리케이션 실행 전 `PATH` 앞에 추가한다.
+`MarkItDownManager`는 다음 순서로 실행 파일을 찾는다.
+
+1. `MARKITDOWN_EXECUTABLE` 환경 변수로 지정한 파일 또는 명령
+2. 실행 환경의 `PATH`에 등록된 `markitdown`
+3. 애플리케이션 디렉터리와 현재 작업 디렉터리의 상위 경로에서 발견되는 개발용 `python-venv` 또는 `build/python-venv`
+
+어느 경로에서도 찾지 못하면 설치, `PATH`, 환경 변수 설정 방법을 포함한 오류를 반환한다. 세 번째 단계는 저장소의 격리 환경을 Qt Creator 또는 빌드 출력 디렉터리에서 바로 사용할 수 있게 하는 개발 편의 기능이며 배포 패키징을 대신하지 않는다.
 
 이 티켓은 CLI 실행 계층만 구현한다. `MainWindow`의 Convert 액션과 문서 상태를 이 클래스에 연결하는 작업은 컨트롤러/UI 통합 티켓의 범위다.
 

@@ -277,10 +277,10 @@ $markitdown = Join-Path $venvDir 'Scripts\markitdown.exe'
 
 전체 형식 지원이 필요하지 않은 작업에서는 필요한 extra만 설치할 수 있다. 그러나 프로젝트의 목표가 MarkItDown 지원 형식을 폭넓게 제공하는 것이므로 기본 개발 환경은 `[all]`을 기준으로 한다.
 
-`MarkItDownManager`는 `QProcess`로 `markitdown <입력 파일>`을 비동기 실행한다. 개발 및 후속 연동 작업에서는 다음을 지킨다.
+`MarkItDownManager`는 `QProcess`로 `markitdown <입력 파일>`을 비동기 실행한다. CLI는 `MARKITDOWN_EXECUTABLE` 환경 변수, 실행 환경의 `PATH`, 실행 파일 또는 현재 작업 디렉터리 상위에 있는 개발용 `python-venv`/`build\python-venv` 순서로 찾는다. 개발 및 후속 연동 작업에서는 다음을 지킨다.
 
 - 전역 PATH에 MarkItDown이 있다고 가정하지 않는다.
-- 개발 실행 환경에서는 `build\python-venv\Scripts`를 PATH 앞에 추가하거나 설정된 CLI 절대 경로를 사용한다.
+- 기본 개발용 `build\python-venv`는 앱이 자동으로 찾는다. 다른 위치의 환경은 `MARKITDOWN_EXECUTABLE`로 CLI 절대 경로를 지정하거나 해당 `Scripts` 디렉터리를 `PATH` 앞에 추가한다.
 - 입력 파일과 출력은 한 번에 하나만 처리한다.
 - 변환 프로세스를 동기 대기해 UI 스레드를 막지 않는다.
 - 사용자 입력 경로를 셸 문자열로 결합하지 않고 `QProcess` 프로그램과 인자 목록으로 분리한다.
@@ -349,7 +349,7 @@ $stagedExe = Join-Path $stageDir 'MarkItDown_Desktop.exe'
 | `Qt6Widgets.dll` 또는 `qwindows.dll` 누락 | 개발 시 Qt `bin`을 PATH에 추가한다. 배포 시 `windeployqt`를 실행한다. |
 | UI 변경이 반영되지 않음 | 소스의 `mainwindow.ui`를 수정했는지 확인하고 qmake/nmake를 다시 실행한다. 생성된 `ui_mainwindow.h`는 수정하지 않는다. |
 | 새 소스가 컴파일되지 않음 | 파일을 `.pro`의 해당 목록에 등록한 후 qmake를 다시 실행한다. |
-| `markitdown`을 찾을 수 없음 | 가상 환경 설치 여부를 확인하고 `build\python-venv\Scripts`를 실행 PATH에 추가한다. |
+| `markitdown`을 찾을 수 없음 | `build\python-venv\Scripts\markitdown.exe`가 존재하는지 확인한다. 다른 위치에 설치했다면 `MARKITDOWN_EXECUTABLE`에 CLI 절대 경로를 지정하거나 해당 디렉터리를 실행 PATH에 추가한다. |
 | Qt 5 빌드가 선택됨 | 별도 호환성 요구가 없다면 Qt 6 MSVC2022 64-bit 키트와 별도 빌드 폴더로 다시 구성한다. |
 
 ## 13. 변경 시 문서화 규칙
