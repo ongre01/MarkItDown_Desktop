@@ -1,6 +1,8 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include "src/model/Document.h"
+
 #include <QMainWindow>
 
 QT_BEGIN_NAMESPACE
@@ -19,5 +21,6 @@ public:
 
 private:
     Ui::MainWindow *ui;
+    Document m_document;
 };
 #endif // MAINWINDOW_H
