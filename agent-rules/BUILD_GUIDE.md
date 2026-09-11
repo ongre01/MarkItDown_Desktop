@@ -29,17 +29,17 @@
 | Qt 모듈 | Core, Gui, Widgets |
 | UI 컴파일 | `uic`가 `mainwindow.ui`에서 `ui_mainwindow.h` 생성 |
 | 실행 파일 | `MarkItDown_Desktop.exe` |
-| 변환 백엔드 | Python 3.10 이상 + Microsoft MarkItDown CLI 예정 |
+| 변환 백엔드 | Python 3.10 이상 + Microsoft MarkItDown CLI (`QProcess` 비동기 실행) |
 
 현재 `.pro` 파일에 등록된 입력은 다음과 같다.
 
-- 소스: `main.cpp`, `mainwindow.cpp`
-- 헤더: `mainwindow.h`
+- 소스: `main.cpp`, `mainwindow.cpp`, `src/markitdown/MarkItDownManager.cpp`
+- 헤더: `mainwindow.h`, `src/model/Document.h`, `src/markitdown/MarkItDownManager.h`
 - 폼: `mainwindow.ui`
 
 새 C++/헤더/UI/리소스 파일을 추가하면 반드시 `.pro` 파일의 `SOURCES`, `HEADERS`, `FORMS`, `RESOURCES` 중 해당 항목에도 등록한다.
 
-현재 코드에는 Python/MarkItDown 호출 로직과 자동화 테스트가 아직 없다. 따라서 빌드 성공을 변환 기능 또는 테스트 통과로 표현해서는 안 된다.
+현재 코드에는 `MarkItDownManager`의 비동기 CLI 호출 로직이 있지만 MainWindow/DocumentController 통합과 자동화 테스트는 아직 없다. 따라서 빌드 성공을 UI 변환 기능 또는 테스트 통과로 표현해서는 안 된다.
 
 ## 3. 권장 개발 환경
 
@@ -277,7 +277,7 @@ $markitdown = Join-Path $venvDir 'Scripts\markitdown.exe'
 
 전체 형식 지원이 필요하지 않은 작업에서는 필요한 extra만 설치할 수 있다. 그러나 프로젝트의 목표가 MarkItDown 지원 형식을 폭넓게 제공하는 것이므로 기본 개발 환경은 `[all]`을 기준으로 한다.
 
-현재 애플리케이션은 MarkItDown CLI를 아직 호출하지 않는다. 향후 `QProcess` 연동 시 다음을 지킨다.
+`MarkItDownManager`는 `QProcess`로 `markitdown <입력 파일>`을 비동기 실행한다. 개발 및 후속 연동 작업에서는 다음을 지킨다.
 
 - 전역 PATH에 MarkItDown이 있다고 가정하지 않는다.
 - 개발 실행 환경에서는 `build\python-venv\Scripts`를 PATH 앞에 추가하거나 설정된 CLI 절대 경로를 사용한다.
