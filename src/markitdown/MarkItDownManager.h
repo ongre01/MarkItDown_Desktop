@@ -1,6 +1,8 @@
 #ifndef MARKITDOWNMANAGER_H
 #define MARKITDOWNMANAGER_H
 
+#include "../model/ConversionError.h"
+
 #include <QByteArray>
 #include <QObject>
 #include <QProcess>
@@ -22,7 +24,7 @@ signals:
 
     void finished(const QString &markdown);
 
-    void failed(const QString &message);
+    void failed(ConversionError error, const QString &details);
 
 private slots:
     void processFinished(int exitCode, QProcess::ExitStatus exitStatus);
@@ -32,6 +34,7 @@ private slots:
     void readStandardError();
 
 private:
+    QString diagnosticDetails(const QString &processDetails = {}) const;
     QString standardErrorMessage() const;
 
     QProcess *m_process;

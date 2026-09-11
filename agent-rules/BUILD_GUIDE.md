@@ -34,7 +34,7 @@
 현재 `.pro` 파일에 등록된 입력은 다음과 같다.
 
 - 소스: `main.cpp`, `mainwindow.cpp`, `src/controller/DocumentController.cpp`, `src/markitdown/MarkItDownManager.cpp`, `src/rendering/MarkdownDocumentRenderer.cpp`
-- 헤더: `mainwindow.h`, `src/controller/DocumentController.h`, `src/model/Document.h`, `src/markitdown/MarkItDownManager.h`, `src/rendering/MarkdownDocumentRenderer.h`
+- 헤더: `mainwindow.h`, `src/controller/DocumentController.h`, `src/model/ConversionError.h`, `src/model/Document.h`, `src/markitdown/MarkItDownManager.h`, `src/rendering/MarkdownDocumentRenderer.h`
 - 폼: `mainwindow.ui`
 
 Windows 빌드는 추가로 `scripts/install_markitdown_backend.ps1`와

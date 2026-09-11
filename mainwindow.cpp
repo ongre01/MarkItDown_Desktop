@@ -59,6 +59,51 @@ QString documentOpenFilter()
         .arg(patterns.join(QLatin1Char(' ')));
 }
 
+struct ConversionErrorPresentation
+{
+    QString title;
+    QString summary;
+};
+
+ConversionErrorPresentation conversionErrorPresentation(ConversionError error)
+{
+    switch (error) {
+    case ConversionError::AlreadyRunning:
+        return {QCoreApplication::translate("MainWindow", "Conversion Already Running"),
+                QCoreApplication::translate(
+                    "MainWindow", u8"다른 문서 변환이 이미 실행 중입니다.")};
+    case ConversionError::ExecutableNotFound:
+        return {QCoreApplication::translate("MainWindow", "MarkItDown Not Found"),
+                QCoreApplication::translate(
+                    "MainWindow",
+                    u8"MarkItDown 실행 파일을 찾을 수 없습니다. 앱 로컬 백엔드 설치 또는 "
+                    u8"MARKITDOWN_EXECUTABLE 설정을 확인하세요.")};
+    case ConversionError::FailedToStart:
+        return {QCoreApplication::translate("MainWindow", "MarkItDown Start Failed"),
+                QCoreApplication::translate(
+                    "MainWindow", u8"MarkItDown 프로세스를 시작하지 못했습니다.")};
+    case ConversionError::Crashed:
+        return {QCoreApplication::translate("MainWindow", "MarkItDown Crashed"),
+                QCoreApplication::translate(
+                    "MainWindow", u8"변환 중 MarkItDown 프로세스가 비정상 종료되었습니다.")};
+    case ConversionError::NonZeroExit:
+        return {QCoreApplication::translate("MainWindow", "Conversion Command Failed"),
+                QCoreApplication::translate(
+                    "MainWindow", u8"MarkItDown 변환 명령이 오류 종료 코드를 반환했습니다.")};
+    case ConversionError::EmptyOutput:
+        return {QCoreApplication::translate("MainWindow", "Empty Conversion Output"),
+                QCoreApplication::translate(
+                    "MainWindow", u8"MarkItDown 변환 결과가 비어 있습니다.")};
+    case ConversionError::ProcessFailure:
+        return {QCoreApplication::translate("MainWindow", "MarkItDown Execution Failed"),
+                QCoreApplication::translate(
+                    "MainWindow", u8"MarkItDown 프로세스 실행 중 오류가 발생했습니다.")};
+    }
+
+    return {QCoreApplication::translate("MainWindow", "Conversion Failed"),
+            QCoreApplication::translate("MainWindow", u8"문서 변환에 실패했습니다.")};
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -221,20 +266,34 @@ bool MainWindow::openDocument(const QString &filePath)
         return false;
     }
 
+    if (!fileInfo.exists()) {
+        QMessageBox::warning(
+            this,
+            tr("Source File Not Found"),
+            tr(u8"원본 파일을 찾을 수 없습니다.\n\n%1")
+                .arg(QDir::toNativeSeparators(filePath)));
+        return false;
+    }
+
     if (!fileInfo.isFile()) {
         QMessageBox::warning(
             this,
-            tr("Open Document"),
-            tr(u8"파일을 열 수 없습니다."));
+            tr("Cannot Open Source File"),
+            tr(u8"원본 파일을 열 수 없습니다.\n\n%1")
+                .arg(QDir::toNativeSeparators(filePath)));
         return false;
     }
 
     if (!supportedDocumentExtensions().contains(fileInfo.suffix(),
                                                  Qt::CaseInsensitive)) {
+        const QString extension = fileInfo.suffix().isEmpty()
+                                      ? tr(u8"확장자 없음")
+                                      : QStringLiteral(".%1").arg(fileInfo.suffix());
         QMessageBox::warning(
             this,
-            tr("Open Document"),
-            tr(u8"지원하지 않는 파일 형식입니다."));
+            tr("Unsupported File Type"),
+            tr(u8"지원하지 않는 파일 형식입니다.\n\n확장자: %1")
+                .arg(extension));
         return false;
     }
 
@@ -254,6 +313,20 @@ bool MainWindow::openDocument(const QString &filePath)
 void MainWindow::convertFile()
 {
     if (m_document.sourceFilePath.isEmpty() || isDocumentBusy()) {
+        return;
+    }
+
+    const QFileInfo sourceInfo(m_document.sourceFilePath);
+    if (!sourceInfo.exists() || !sourceInfo.isFile()) {
+        m_document.status = DocumentStatus::Failed;
+        updateDocumentPresentation();
+        ui->statusbar->showMessage(
+            tr("%1 | Source File Not Found").arg(sourceInfo.fileName()));
+        QMessageBox::warning(
+            this,
+            tr("Source File Not Found"),
+            tr(u8"원본 파일을 찾을 수 없습니다.\n\n%1")
+                .arg(QDir::toNativeSeparators(m_document.sourceFilePath)));
         return;
     }
 
@@ -339,20 +412,24 @@ void MainWindow::onConversionFinished(const QString &markdown)
     emit renderMarkdownRequested(requestId, markdown);
 }
 
-void MainWindow::onConversionFailed(const QString &error)
+void MainWindow::onConversionFailed(ConversionError error, const QString &details)
 {
     invalidateRenderRequest();
 
-    const QString message = error.trimmed().isEmpty()
-                                ? tr("MarkItDown conversion failed.")
-                                : error.trimmed();
+    const ConversionErrorPresentation presentation = conversionErrorPresentation(error);
+    QString message = presentation.summary;
+    const QString normalizedDetails = details.trimmed();
+    if (!normalizedDetails.isEmpty()) {
+        message += tr("\n\nTechnical details:\n%1").arg(normalizedDetails);
+    }
 
     m_document.status = DocumentStatus::Failed;
     updateDocumentPresentation();
 
     const QString fileName = QFileInfo(m_document.sourceFilePath).fileName();
-    ui->statusbar->showMessage(tr("%1 | Conversion Failed: %2").arg(fileName, message));
-    QMessageBox::critical(this, tr("Conversion Failed"), message);
+    ui->statusbar->showMessage(
+        tr("%1 | Conversion Failed: %2").arg(fileName, presentation.summary));
+    QMessageBox::critical(this, presentation.title, message);
 }
 
 void MainWindow::onMarkdownRendered(quint64 requestId, const QString &html)
@@ -454,11 +531,16 @@ bool MainWindow::saveMarkdownToFile(const QString &filePath)
 {
     QSaveFile outputFile(filePath);
     const auto showSaveError = [this, &filePath](const QString &error) {
+        const QString details = error.trimmed().isEmpty()
+                                    ? tr(u8"알 수 없는 파일 시스템 오류입니다.")
+                                    : error.trimmed();
+        ui->statusbar->showMessage(
+            tr("Markdown Save Failed: %1").arg(details));
         QMessageBox::critical(
             this,
-            tr("Save Failed"),
-            tr("Could not save Markdown to:\n%1\n\n%2")
-                .arg(QDir::toNativeSeparators(filePath), error));
+            tr("Markdown Save Failed"),
+            tr(u8"Markdown 파일을 저장하지 못했습니다.\n\n경로:\n%1\n\n기술 세부 정보:\n%2")
+                .arg(QDir::toNativeSeparators(filePath), details));
     };
 
     if (!outputFile.open(QIODevice::WriteOnly)) {

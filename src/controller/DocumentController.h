@@ -1,6 +1,8 @@
 #ifndef DOCUMENTCONTROLLER_H
 #define DOCUMENTCONTROLLER_H
 
+#include "../model/ConversionError.h"
+
 #include <QObject>
 #include <QString>
 
@@ -19,7 +21,7 @@ public:
 signals:
     void conversionStarted();
     void conversionFinished(const QString &markdown);
-    void conversionFailed(const QString &error);
+    void conversionFailed(ConversionError error, const QString &details);
 
 private:
     MarkItDownManager *m_markItDown;

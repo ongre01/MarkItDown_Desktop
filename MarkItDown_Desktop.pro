@@ -19,6 +19,7 @@ HEADERS += \
     mainwindow.h \
     src/controller/DocumentController.h \
     src/markitdown/MarkItDownManager.h \
+    src/model/ConversionError.h \
     src/model/Document.h \
     src/rendering/MarkdownDocumentRenderer.h
 

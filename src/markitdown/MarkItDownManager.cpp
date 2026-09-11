@@ -117,7 +117,7 @@ MarkItDownManager::MarkItDownManager(QObject *parent)
 void MarkItDownManager::convert(const QString &filePath)
 {
     if (isRunning()) {
-        emit failed(tr("Another conversion is already running."));
+        emit failed(ConversionError::AlreadyRunning, {});
         return;
     }
 
@@ -130,12 +130,11 @@ void MarkItDownManager::convert(const QString &filePath)
             qEnvironmentVariable("MARKITDOWN_EXECUTABLE").trimmed();
 
         if (!configuredExecutable.isEmpty()) {
-            emit failed(tr("The MarkItDown executable configured by "
-                           "MARKITDOWN_EXECUTABLE was not found: %1")
-                            .arg(configuredExecutable));
+            emit failed(ConversionError::ExecutableNotFound,
+                        tr("MARKITDOWN_EXECUTABLE: %1")
+                            .arg(QDir::toNativeSeparators(configuredExecutable)));
         } else {
-            emit failed(tr("MarkItDown CLI was not found. Install MarkItDown, add it to "
-                           "PATH, or set MARKITDOWN_EXECUTABLE."));
+            emit failed(ConversionError::ExecutableNotFound, {});
         }
         return;
     }
@@ -158,28 +157,30 @@ void MarkItDownManager::processFinished(int exitCode, QProcess::ExitStatus exitS
 
     if (exitStatus == QProcess::NormalExit && exitCode == 0) {
         const QString markdown = QString::fromUtf8(m_process->readAllStandardOutput());
+
+        if (markdown.trimmed().isEmpty()) {
+            m_failureReported = true;
+            emit failed(ConversionError::EmptyOutput, diagnosticDetails());
+            return;
+        }
+
         emit finished(markdown);
         return;
     }
 
     m_failureReported = true;
 
-    QString message = standardErrorMessage();
-    if (message.isEmpty()) {
-        if (exitStatus == QProcess::CrashExit) {
-            message = tr("MarkItDown terminated unexpectedly.");
-        } else {
-            message = tr("MarkItDown exited with code %1.").arg(exitCode);
-        }
+    if (exitStatus == QProcess::CrashExit) {
+        emit failed(ConversionError::Crashed, diagnosticDetails());
+        return;
     }
 
-    emit failed(message);
+    emit failed(ConversionError::NonZeroExit,
+                diagnosticDetails(tr("Exit code: %1").arg(exitCode)));
 }
 
 void MarkItDownManager::processError(QProcess::ProcessError error)
 {
-    Q_UNUSED(error)
-
     readStandardError();
 
     if (m_failureReported) {
@@ -188,16 +189,22 @@ void MarkItDownManager::processError(QProcess::ProcessError error)
 
     m_failureReported = true;
 
-    QString message = standardErrorMessage();
-    if (message.isEmpty()) {
-        message = m_process->errorString();
+    ConversionError conversionError = ConversionError::ProcessFailure;
+    switch (error) {
+    case QProcess::FailedToStart:
+        conversionError = ConversionError::FailedToStart;
+        break;
+    case QProcess::Crashed:
+        conversionError = ConversionError::Crashed;
+        break;
+    case QProcess::Timedout:
+    case QProcess::WriteError:
+    case QProcess::ReadError:
+    case QProcess::UnknownError:
+        break;
     }
 
-    if (message.isEmpty()) {
-        message = tr("MarkItDown execution failed.");
-    }
-
-    emit failed(message);
+    emit failed(conversionError, diagnosticDetails(m_process->errorString()));
 }
 
 void MarkItDownManager::readStandardError()
@@ -208,4 +215,21 @@ void MarkItDownManager::readStandardError()
 QString MarkItDownManager::standardErrorMessage() const
 {
     return QString::fromUtf8(m_standardError).trimmed();
+}
+
+QString MarkItDownManager::diagnosticDetails(const QString &processDetails) const
+{
+    QStringList details;
+
+    const QString normalizedProcessDetails = processDetails.trimmed();
+    if (!normalizedProcessDetails.isEmpty()) {
+        details.append(normalizedProcessDetails);
+    }
+
+    const QString standardError = standardErrorMessage();
+    if (!standardError.isEmpty()) {
+        details.append(tr("Standard error:\n%1").arg(standardError));
+    }
+
+    return details.join(QStringLiteral("\n\n"));
 }

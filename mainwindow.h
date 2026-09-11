@@ -1,6 +1,7 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include "src/model/ConversionError.h"
 #include "src/model/Document.h"
 
 #include <QMainWindow>
@@ -41,7 +42,7 @@ private slots:
     void saveMarkdownAs();
     void onConversionStarted();
     void onConversionFinished(const QString &markdown);
-    void onConversionFailed(const QString &error);
+    void onConversionFailed(ConversionError error, const QString &details);
     void onMarkdownRendered(quint64 requestId, const QString &html);
     void onMarkdownEditorTextChanged();
     void renderEditorPreview();
