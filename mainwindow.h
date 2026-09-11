@@ -31,6 +31,8 @@ signals:
 private slots:
     void openFile();
     void convertFile();
+    void saveMarkdown();
+    void saveMarkdownAs();
     void onConversionStarted();
     void onConversionFinished(const QString &markdown);
     void onConversionFailed(const QString &error);
@@ -41,6 +43,7 @@ private slots:
 
 private:
     bool isDocumentBusy() const;
+    bool saveMarkdownToFile(const QString &filePath);
     void replaceEditorDocument();
     void startEditorInsertion(const QString &markdown);
     void finishEditorInsertion();

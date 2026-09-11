@@ -4,11 +4,13 @@
 #include "ui_mainwindow.h"
 
 #include <QAction>
+#include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QList>
 #include <QMessageBox>
 #include <QPlainTextDocumentLayout>
+#include <QSaveFile>
 #include <QTextBrowser>
 #include <QTextCursor>
 #include <QTextDocument>
@@ -71,6 +73,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(ui->actionOpen, &QAction::triggered, this, &MainWindow::openFile);
     connect(ui->actionConvert, &QAction::triggered, this, &MainWindow::convertFile);
+    connect(ui->actionSave, &QAction::triggered, this, &MainWindow::saveMarkdown);
+    connect(ui->actionSaveAs, &QAction::triggered, this, &MainWindow::saveMarkdownAs);
     connect(m_controller,
             &DocumentController::conversionStarted,
             this,
@@ -142,6 +146,50 @@ void MainWindow::convertFile()
     updateDocumentPresentation();
 
     m_controller->convert(m_document.sourceFilePath);
+}
+
+void MainWindow::saveMarkdown()
+{
+    if (m_document.status != DocumentStatus::Completed || isDocumentBusy()) {
+        return;
+    }
+
+    if (m_document.markdownFilePath.isEmpty()) {
+        saveMarkdownAs();
+        return;
+    }
+
+    saveMarkdownToFile(m_document.markdownFilePath);
+}
+
+void MainWindow::saveMarkdownAs()
+{
+    if (m_document.status != DocumentStatus::Completed || isDocumentBusy()) {
+        return;
+    }
+
+    QString suggestedFilePath = m_document.markdownFilePath;
+    if (suggestedFilePath.isEmpty()) {
+        const QFileInfo sourceInfo(m_document.sourceFilePath);
+        suggestedFilePath = sourceInfo.dir().filePath(
+            sourceInfo.completeBaseName() + QStringLiteral(".md"));
+    }
+
+    QString filePath = QFileDialog::getSaveFileName(
+        this,
+        tr("Save Markdown As"),
+        suggestedFilePath,
+        tr("Markdown Files (*.md);;All Files (*.*)"));
+
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    if (QFileInfo(filePath).suffix().isEmpty()) {
+        filePath += QStringLiteral(".md");
+    }
+
+    saveMarkdownToFile(QFileInfo(filePath).absoluteFilePath());
 }
 
 void MainWindow::onConversionStarted()
@@ -283,6 +331,45 @@ bool MainWindow::isDocumentBusy() const
            || m_document.status == DocumentStatus::Rendering;
 }
 
+bool MainWindow::saveMarkdownToFile(const QString &filePath)
+{
+    QSaveFile outputFile(filePath);
+    const auto showSaveError = [this, &filePath](const QString &error) {
+        QMessageBox::critical(
+            this,
+            tr("Save Failed"),
+            tr("Could not save Markdown to:\n%1\n\n%2")
+                .arg(QDir::toNativeSeparators(filePath), error));
+    };
+
+    if (!outputFile.open(QIODevice::WriteOnly)) {
+        showSaveError(outputFile.errorString());
+        return false;
+    }
+
+    const QByteArray utf8 = m_document.markdown.toUtf8();
+    if (outputFile.write(utf8) != utf8.size()) {
+        const QString error = outputFile.errorString();
+        outputFile.cancelWriting();
+        showSaveError(error);
+        return false;
+    }
+
+    if (!outputFile.commit()) {
+        showSaveError(outputFile.errorString());
+        return false;
+    }
+
+    m_document.markdownFilePath = QFileInfo(filePath).absoluteFilePath();
+    m_document.modified = false;
+    ui->markdownEditor->document()->setModified(false);
+    updateDocumentPresentation();
+    ui->statusbar->showMessage(
+        tr("Saved: %1").arg(QFileInfo(m_document.markdownFilePath).fileName()));
+
+    return true;
+}
+
 void MainWindow::replaceEditorDocument()
 {
     QTextDocument *oldDocument = ui->markdownEditor->document();
@@ -412,4 +499,5 @@ void MainWindow::updateDocumentPresentation()
     ui->actionOpen->setEnabled(!isBusy);
     ui->actionConvert->setEnabled(hasDocument && !isBusy);
     ui->actionSave->setEnabled(hasMarkdown && !isBusy);
+    ui->actionSaveAs->setEnabled(hasMarkdown && !isBusy);
 }
