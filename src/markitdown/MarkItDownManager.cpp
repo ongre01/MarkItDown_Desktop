@@ -14,13 +14,26 @@ QString existingFilePath(const QString &filePath)
     return fileInfo.isFile() ? fileInfo.absoluteFilePath() : QString{};
 }
 
-QString findDevelopmentEnvironmentExecutable()
+QString markItDownRelativeExecutablePath()
 {
 #ifdef Q_OS_WIN
-    const QString relativeExecutablePath = QStringLiteral("Scripts/markitdown.exe");
+    return QStringLiteral("Scripts/markitdown.exe");
 #else
-    const QString relativeExecutablePath = QStringLiteral("bin/markitdown");
+    return QStringLiteral("bin/markitdown");
 #endif
+}
+
+QString findApplicationLocalExecutable()
+{
+    const QDir applicationDirectory(QCoreApplication::applicationDirPath());
+    return existingFilePath(
+        applicationDirectory.filePath(
+            QStringLiteral("python-venv/%1").arg(markItDownRelativeExecutablePath())));
+}
+
+QString findDevelopmentEnvironmentExecutable()
+{
+    const QString relativeExecutablePath = markItDownRelativeExecutablePath();
 
     QStringList searchRoots{QCoreApplication::applicationDirPath(), QDir::currentPath()};
     QStringList visitedDirectories;
@@ -64,6 +77,11 @@ QString resolveMarkItDownExecutable()
         }
 
         return QStandardPaths::findExecutable(configuredExecutable);
+    }
+
+    const QString applicationLocalExecutable = findApplicationLocalExecutable();
+    if (!applicationLocalExecutable.isEmpty()) {
+        return applicationLocalExecutable;
     }
 
     const QString pathExecutable =

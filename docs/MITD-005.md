@@ -35,7 +35,7 @@
 
 ## 런타임 전제
 
-앱은 `MARKITDOWN_EXECUTABLE` 환경 변수, `PATH`, 저장소의 `build\python-venv` 순서로 `markitdown` CLI를 찾는다. 따라서 가이드대로 생성한 개발용 가상환경은 Qt Creator 또는 빌드 출력 디렉터리에서 앱을 실행할 때 별도의 `PATH` 수정 없이 사용할 수 있다.
+Windows 빌드는 실행 파일과 같은 폴더의 `python-venv`에 MarkItDown CLI를 자동 설치한다. 앱은 `MARKITDOWN_EXECUTABLE`, 앱 로컬 `python-venv`, `PATH`, 저장소의 개발용 `build\python-venv` 순서로 CLI를 찾는다. 따라서 정상 빌드 결과는 별도의 PATH 수정 없이 변환할 수 있다.
 
 ## 확인 방법
 

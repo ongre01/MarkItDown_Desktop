@@ -37,9 +37,13 @@
 - 헤더: `mainwindow.h`, `src/controller/DocumentController.h`, `src/model/Document.h`, `src/markitdown/MarkItDownManager.h`, `src/rendering/MarkdownDocumentRenderer.h`
 - 폼: `mainwindow.ui`
 
+Windows 빌드는 추가로 `scripts/install_markitdown_backend.ps1`와
+`requirements-markitdown.txt`를 사용해 실행 파일 폴더의 `python-venv`에
+MarkItDown 백엔드를 준비한다. 이 두 파일은 `.pro`의 `DISTFILES`에 등록되어 있다.
+
 새 C++/헤더/UI/리소스 파일을 추가하면 반드시 `.pro` 파일의 `SOURCES`, `HEADERS`, `FORMS`, `RESOURCES` 중 해당 항목에도 등록한다.
 
-현재 코드에는 `MarkItDownManager`의 비동기 CLI 호출 로직이 있지만 MainWindow/DocumentController 통합과 자동화 테스트는 아직 없다. 따라서 빌드 성공을 UI 변환 기능 또는 테스트 통과로 표현해서는 안 된다.
+현재 `MainWindow`, `DocumentController`, `MarkItDownManager`의 비동기 변환 흐름은 연결되어 있지만 자동화 테스트는 아직 없다. 따라서 빌드 성공만으로 UI 변환 기능까지 검증했다고 표현해서는 안 된다.
 
 ## 3. 권장 개발 환경
 
@@ -72,7 +76,7 @@ Qt와 컴파일러 ABI 및 아키텍처를 혼합하지 않는다. 예를 들어
 | MSVC | 19.44, x64 |
 | Git | 2.55.0.windows.3 |
 | Python 런처 | 3.12, 3.13, 3.14 발견; 기본값은 3.14.7 |
-| MarkItDown CLI | PATH에서 발견되지 않음 |
+| MarkItDown CLI | PATH에서는 발견되지 않음. Debug 빌드 폴더의 앱 로컬 환경에 0.1.7 설치 확인 |
 
 Qt 6.11.0 + MSVC 2022 x64 Debug 빌드는 이 문서의 절차로 성공했으며, 확인된 출력은 다음 경로였다.
 
@@ -254,6 +258,36 @@ Qt Creator가 Qt 5 키트를 자동 선택하더라도 프로젝트 목표의 �
 
 ## 9. Python 및 MarkItDown 개발 환경
 
+### 9.1 빌드 결과 폴더 자동 설치
+
+Windows에서 qmake가 실행 파일 링크를 마치면 `QMAKE_POST_LINK`가
+`scripts/install_markitdown_backend.ps1`를 실행한다. 설치 대상은 현재 구성의
+실행 파일과 같은 폴더 아래 `python-venv`이다.
+
+```text
+debug\
+├── MarkItDown_Desktop.exe
+└── python-venv\
+    └── Scripts\markitdown.exe
+```
+
+설치 스크립트는 Python 3.12, Python Launcher의 기본 Python 3, `python`,
+`python3` 순서로 Python 3.10 이상을 찾는다. 앱 로컬 가상환경이 없으면 생성하고,
+`requirements-markitdown.txt`의 고정 버전을 설치한 뒤 `markitdown --help`가
+성공하는지 확인한다. Python을 찾지 못하거나 패키지 설치 또는 CLI 검증이
+실패하면 빌드도 실패한다.
+
+현재 고정된 직접 의존성은 다음과 같다.
+
+```text
+markitdown[all]==0.1.7
+```
+
+첫 빌드에는 Python 3.10 이상과 패키지 인덱스에 접근할 네트워크가 필요하다.
+이후 링크에서는 기존 가상환경을 재사용하며 pip가 요구사항을 다시 확인한다.
+
+### 9.2 수동 개발 환경
+
 MarkItDown 백엔드 작업 전에는 Python 런처로 사용 가능한 버전을 확인한다.
 
 ```powershell
@@ -277,9 +311,10 @@ $markitdown = Join-Path $venvDir 'Scripts\markitdown.exe'
 
 전체 형식 지원이 필요하지 않은 작업에서는 필요한 extra만 설치할 수 있다. 그러나 프로젝트의 목표가 MarkItDown 지원 형식을 폭넓게 제공하는 것이므로 기본 개발 환경은 `[all]`을 기준으로 한다.
 
-`MarkItDownManager`는 `QProcess`로 `markitdown <입력 파일>`을 비동기 실행한다. CLI는 `MARKITDOWN_EXECUTABLE` 환경 변수, 실행 환경의 `PATH`, 실행 파일 또는 현재 작업 디렉터리 상위에 있는 개발용 `python-venv`/`build\python-venv` 순서로 찾는다. 개발 및 후속 연동 작업에서는 다음을 지킨다.
+`MarkItDownManager`는 `QProcess`로 `markitdown <입력 파일>`을 비동기 실행한다. CLI는 `MARKITDOWN_EXECUTABLE` 환경 변수, 실행 파일과 같은 폴더의 `python-venv`, 실행 환경의 `PATH`, 실행 파일 또는 현재 작업 디렉터리 상위에 있는 개발용 `python-venv`/`build\python-venv` 순서로 찾는다. 개발 및 후속 연동 작업에서는 다음을 지킨다.
 
 - 전역 PATH에 MarkItDown이 있다고 가정하지 않는다.
+- 빌드 결과에 준비된 앱 로컬 CLI를 PATH보다 우선해 빌드에서 검증한 버전을 사용한다.
 - 기본 개발용 `build\python-venv`는 앱이 자동으로 찾는다. 다른 위치의 환경은 `MARKITDOWN_EXECUTABLE`로 CLI 절대 경로를 지정하거나 해당 `Scripts` 디렉터리를 `PATH` 앞에 추가한다.
 - 입력 파일과 출력은 한 번에 하나만 처리한다.
 - 변환 프로세스를 동기 대기해 UI 스레드를 막지 않는다.
@@ -294,7 +329,7 @@ $venvScripts = Join-Path $repoRoot 'build\python-venv\Scripts'
 $env:Path = "$venvScripts;$(Join-Path $qtRoot 'bin');$env:Path"
 ```
 
-MarkItDown 패키지 버전은 아직 저장소에 고정되어 있지 않다. 재현 가능한 배포를 구현하는 티켓에서는 의존성 파일에 버전을 고정하고 이 문서도 함께 갱신한다.
+`requirements-markitdown.txt`의 직접 의존성 버전을 변경하면 실제 설치, 대표 입력 변환 및 이 문서를 같은 작업에서 갱신한다.
 
 ## 10. 실행과 검증
 
@@ -310,7 +345,7 @@ $env:Path = "$(Join-Path $qtRoot 'bin');$env:Path"
 
 1. qmake 성공
 2. 해당 구성의 nmake 성공
-3. 실행 파일 생성 확인
+3. 실행 파일과 같은 폴더의 `python-venv\Scripts\markitdown.exe` 생성 및 `--help` 성공 확인
 4. GUI를 실행해 작업 티켓의 수동 확인 항목 점검
    - 큰 문서는 `Converting...`과 `Rendering preview...` 단계 모두에서 창 이동과 클릭에 응답하는지 확인한다.
    - 미리보기의 비동기 로드가 끝난 뒤에만 상태가 `Converted`로 바뀌고 `Open`, `Convert`, `Save`가 다시 활성화되는지 확인한다.
@@ -339,7 +374,19 @@ $stagedExe = Join-Path $stageDir 'MarkItDown_Desktop.exe'
     $stagedExe
 ```
 
-`windeployqt`는 Qt 의존성을 수집하지만 Python, MarkItDown 및 그 Python 의존성을 패키징하지 않는다. 백엔드 배포 방식이 구현되기 전까지 위 단계는 Qt 애플리케이션 배포 준비만 의미한다.
+`windeployqt`는 Qt 의존성만 수집한다. 배포 스테이징 폴더에도 앱 로컬 백엔드를
+준비하려면 최종 스테이징 경로를 대상으로 설치 스크립트를 다시 실행한다.
+
+```powershell
+& (Join-Path $repoRoot 'scripts\install_markitdown_backend.ps1') `
+    -Destination (Join-Path $stageDir 'python-venv') `
+    -RequirementsFile (Join-Path $repoRoot 'requirements-markitdown.txt')
+```
+
+Python 표준 `venv`는 이동 가능한 독립 Python 배포물이 아니다. 따라서 이 자동
+설치는 빌드 및 동일 PC의 스테이징 결과를 위한 것이며, Python이 없는 일반 사용자
+PC로 폴더를 복사하는 독립 배포를 의미하지 않는다. 독립 배포에는 Python 런타임을
+포함하는 별도 패키징 작업이 필요하다.
 
 ## 12. 자주 발생하는 문제
 
@@ -351,7 +398,8 @@ $stagedExe = Join-Path $stageDir 'MarkItDown_Desktop.exe'
 | `Qt6Widgets.dll` 또는 `qwindows.dll` 누락 | 개발 시 Qt `bin`을 PATH에 추가한다. 배포 시 `windeployqt`를 실행한다. |
 | UI 변경이 반영되지 않음 | 소스의 `mainwindow.ui`를 수정했는지 확인하고 qmake/nmake를 다시 실행한다. 생성된 `ui_mainwindow.h`는 수정하지 않는다. |
 | 새 소스가 컴파일되지 않음 | 파일을 `.pro`의 해당 목록에 등록한 후 qmake를 다시 실행한다. |
-| `markitdown`을 찾을 수 없음 | `build\python-venv\Scripts\markitdown.exe`가 존재하는지 확인한다. 다른 위치에 설치했다면 `MARKITDOWN_EXECUTABLE`에 CLI 절대 경로를 지정하거나 해당 디렉터리를 실행 PATH에 추가한다. |
+| 빌드 중 앱 로컬 MarkItDown 설치 실패 | Python 3.10 이상과 네트워크 연결을 확인하고, 출력된 pip 오류를 해결한 뒤 다시 링크한다. 설치 대상은 실행 파일 폴더의 `python-venv`이다. |
+| 실행 시 `markitdown`을 찾을 수 없음 | 실행 파일 옆 `python-venv\Scripts\markitdown.exe`가 존재하는지 확인한다. 없으면 qmake 후 다시 빌드하거나 설치 스크립트를 해당 실행 파일 폴더에 직접 실행한다. 다른 위치를 사용하려면 `MARKITDOWN_EXECUTABLE`에 CLI 절대 경로를 지정한다. |
 | Qt 5 빌드가 선택됨 | 별도 호환성 요구가 없다면 Qt 6 MSVC2022 64-bit 키트와 별도 빌드 폴더로 다시 구성한다. |
 
 ## 13. 변경 시 문서화 규칙
