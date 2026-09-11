@@ -8,19 +8,18 @@
 - 변환 성공 시 stdout Markdown을 `Document.markdown`에 저장하고 상태를 `Rendering`으로 변경한 뒤, 응답성을 유지하는 렌더링 파이프라인으로 편집기와 미리보기에 표시한다.
 - 변환 실패 시 상태를 `Failed`로 변경하고 상태 표시줄과 오류 메시지 상자에 원인을 표시한다.
 - 빈 문서, 변환 준비, 변환 중, 완료, 실패 상태에 맞춰 창 제목, 상태 표시줄 및 액션 활성화 상태를 일관되게 갱신한다.
-- 새 파일을 열 때 이전 Markdown 편집기 문서를 분리해 지연 삭제하고 새 문서로 교체하며, 미리보기는 빈 페이지를 비동기 로드한다.
+- 새 파일을 열 때 이전 Markdown 편집기 문서를 분리해 지연 삭제하고 새 문서로 교체하며, 미리보기 내용을 비운다.
 
 ## 변환 완료 렌더링의 UI 응답성
 
 - `MarkdownDocumentRenderer`는 전용 `QThread`에서 `QTextDocument::setMarkdown()`으로 Markdown을 파싱하고 HTML을 생성한다.
-- 작업 스레드에는 UI 객체를 전달하지 않는다. 렌더 요청 ID, Markdown 문자열, 임시 HTML 파일 경로만 queued signal로 전달한다.
-- 렌더러가 생성한 HTML은 `MainWindow`가 소유한 `QTemporaryDir` 아래에 저장되며 창 수명이 끝날 때 함께 정리된다.
+- 작업 스레드에는 UI 객체를 전달하지 않는다. 렌더 요청 ID와 Markdown 문자열만 queued signal로 전달하고, 생성한 HTML 문자열을 UI 스레드로 돌려준다.
 - 편집기에는 한 번에 전체 Markdown을 설정하지 않는다. 약 32 KiB 단위로 나누되 줄 끝을 우선해 청크 경계를 선택하고, 청크 사이에 1 ms single-shot 타이머를 두어 Windows 메시지 루프에 제어권을 돌려준다.
 - 청크 삽입 중에는 편집기를 읽기 전용으로 전환하고 undo 기록과 화면 갱신을 보류한다. 삽입 완료 후 이를 복원하고 문서를 수정되지 않은 상태로 표시한다.
 - 기존 편집기 문서를 교체할 때는 먼저 부모를 분리한다. `QPlainTextEdit::setDocument()`가 소유 중인 기존 문서를 즉시 삭제한 뒤 같은 포인터에 `deleteLater()`를 호출하는 use-after-free를 방지하기 위한 것이다.
-- 미리보기는 `QTextBrowser` 대신 `QWebEngineView`를 사용한다. 편집기 삽입과 작업 스레드의 HTML 저장이 모두 끝난 뒤 임시 파일을 비동기 로드한다.
-- 요청마다 증가하는 렌더 ID를 사용한다. 현재 문서와 ID가 다른 완료 신호는 폐기하고 해당 임시 파일을 제거한다.
-- `QWebEngineView::loadFinished`가 현재 요청의 성공을 알린 뒤에만 문서 상태를 `Completed`로 바꾸고 액션을 다시 활성화한다.
+- 미리보기는 `QTextBrowser`를 사용한다. 편집기 삽입과 작업 스레드의 Markdown 파싱이 모두 끝난 뒤 생성된 HTML을 표시한다.
+- 요청마다 증가하는 렌더 ID를 사용한다. 현재 문서와 ID가 다른 완료 신호는 폐기한다.
+- 편집기 삽입과 HTML 생성이 모두 끝난 뒤 문서 상태를 `Completed`로 바꾸고 액션을 다시 활성화한다.
 
 ## 상태별 UI
 

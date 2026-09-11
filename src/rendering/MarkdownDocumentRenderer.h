@@ -13,12 +13,10 @@ public:
 
 public slots:
     void render(quint64 requestId,
-                const QString &markdown,
-                const QString &htmlFilePath);
+                const QString &markdown);
 
 signals:
-    void rendered(quint64 requestId, const QString &htmlFilePath);
-    void failed(quint64 requestId, const QString &error);
+    void rendered(quint64 requestId, const QString &html);
 };
 
 #endif // MARKDOWNDOCUMENTRENDERER_H

@@ -26,7 +26,7 @@
 | 빌드 시스템 | qmake (`MarkItDown_Desktop.pro`) |
 | C++ 표준 | C++17 |
 | 권장 Qt 키트 | Qt 6.x, MSVC 2022 64-bit |
-| Qt 모듈 | Core, Gui, Widgets, WebEngineWidgets |
+| Qt 모듈 | Core, Gui, Widgets |
 | UI 컴파일 | `uic`가 `mainwindow.ui`에서 `ui_mainwindow.h` 생성 |
 | 실행 파일 | `MarkItDown_Desktop.exe` |
 | 변환 백엔드 | Python 3.10 이상 + Microsoft MarkItDown CLI (`QProcess` 비동기 실행) |
@@ -55,7 +55,7 @@ MarkItDown 백엔드를 준비한다. 이 두 파일은 `.pro`의 `DISTFILES`에
    - MSVC v143 x64/x86 build tools
    - Windows SDK
 3. Qt 6.x의 `MSVC 2022 64-bit` 구성
-   - Qt Widgets 및 Qt WebEngine 포함
+   - Qt Widgets 포함
    - Qt Creator는 선택 사항이지만 GUI 작업 시 권장
 4. Git
 5. 변환 기능 작업 시 Python 3.10 이상

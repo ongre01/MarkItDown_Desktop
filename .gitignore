@@ -84,3 +84,9 @@ CMakeLists.txt.user*
 
 # codegraph
 .codegraph/
+
+# tapl
+.tapl/
+
+# codex
+.codex/

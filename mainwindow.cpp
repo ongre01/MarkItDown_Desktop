@@ -4,23 +4,22 @@
 #include "ui_mainwindow.h"
 
 #include <QAction>
-#include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QFile>
 #include <QList>
 #include <QMessageBox>
 #include <QPlainTextDocumentLayout>
+#include <QTextBrowser>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTimer>
-#include <QWebEngineView>
 
 namespace {
 
 constexpr qsizetype EditorChunkSize = 32 * 1024;
 constexpr qsizetype MaximumEditorChunkSize = 64 * 1024;
 constexpr int EditorChunkDelayMilliseconds = 1;
+constexpr int PreviewUpdateDelayMilliseconds = 150;
 
 } // namespace
 
@@ -30,6 +29,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_controller(new DocumentController(this))
     , m_renderer(new MarkdownDocumentRenderer)
     , m_editorChunkTimer(new QTimer(this))
+    , m_previewUpdateTimer(new QTimer(this))
 {
     ui->setupUi(this);
     ui->contentSplitter->setStretchFactor(0, 1);
@@ -54,10 +54,6 @@ MainWindow::MainWindow(QWidget *parent)
             &MarkdownDocumentRenderer::rendered,
             this,
             &MainWindow::onMarkdownRendered);
-    connect(m_renderer,
-            &MarkdownDocumentRenderer::failed,
-            this,
-            &MainWindow::onMarkdownRenderFailed);
     m_rendererThread.start();
 
     m_editorChunkTimer->setSingleShot(true);
@@ -65,6 +61,13 @@ MainWindow::MainWindow(QWidget *parent)
             &QTimer::timeout,
             this,
             &MainWindow::insertNextEditorChunk);
+
+    m_previewUpdateTimer->setSingleShot(true);
+    m_previewUpdateTimer->setInterval(PreviewUpdateDelayMilliseconds);
+    connect(m_previewUpdateTimer,
+            &QTimer::timeout,
+            this,
+            &MainWindow::renderEditorPreview);
 
     connect(ui->actionOpen, &QAction::triggered, this, &MainWindow::openFile);
     connect(ui->actionConvert, &QAction::triggered, this, &MainWindow::convertFile);
@@ -80,10 +83,10 @@ MainWindow::MainWindow(QWidget *parent)
             &DocumentController::conversionFailed,
             this,
             &MainWindow::onConversionFailed);
-    connect(ui->markdownPreview,
-            &QWebEngineView::loadFinished,
+    connect(ui->markdownEditor,
+            &QPlainTextEdit::textChanged,
             this,
-            &MainWindow::onPreviewLoadFinished);
+            &MainWindow::onMarkdownEditorTextChanged);
 
     updateDocumentPresentation();
 }
@@ -120,7 +123,7 @@ void MainWindow::openFile()
     m_document.status = DocumentStatus::Ready;
 
     replaceEditorDocument();
-    ui->markdownPreview->load(QUrl(QStringLiteral("about:blank")));
+    ui->markdownPreview->clear();
 
     updateDocumentPresentation();
 }
@@ -130,6 +133,8 @@ void MainWindow::convertFile()
     if (m_document.sourceFilePath.isEmpty() || isDocumentBusy()) {
         return;
     }
+
+    invalidateRenderRequest();
 
     // Disable conversion-sensitive actions immediately so a second request cannot
     // be queued while QProcess is transitioning to its Starting state.
@@ -147,38 +152,30 @@ void MainWindow::onConversionStarted()
 
 void MainWindow::onConversionFinished(const QString &markdown)
 {
+    invalidateRenderRequest();
+
     m_document.markdown = markdown;
     m_document.modified = false;
     m_document.status = DocumentStatus::Rendering;
 
     const quint64 requestId = ++m_lastRenderRequestId;
     m_activeRenderRequestId = requestId;
-    m_previewLoadRequestId = 0;
-    m_renderedHtmlFilePath.clear();
-    m_expectedPreviewUrl.clear();
+    m_renderedHtml.clear();
     m_editorInsertionFinished = false;
     m_htmlRenderingFinished = false;
-    m_previewLoadPending = false;
+    m_initialPreviewRendering = true;
 
     replaceEditorDocument();
     startEditorInsertion(markdown);
 
     updateDocumentPresentation();
-
-    if (!m_renderDirectory.isValid()) {
-        failRendering(requestId, tr("Could not create a temporary preview directory."));
-        return;
-    }
-
-    const QString htmlFilePath = QDir(m_renderDirectory.path())
-                                     .filePath(QStringLiteral("preview-%1.html")
-                                                   .arg(requestId));
-
-    emit renderMarkdownRequested(requestId, markdown, htmlFilePath);
+    emit renderMarkdownRequested(requestId, markdown);
 }
 
 void MainWindow::onConversionFailed(const QString &error)
 {
+    invalidateRenderRequest();
+
     const QString message = error.trimmed().isEmpty()
                                 ? tr("MarkItDown conversion failed.")
                                 : error.trimmed();
@@ -191,21 +188,48 @@ void MainWindow::onConversionFailed(const QString &error)
     QMessageBox::critical(this, tr("Conversion Failed"), message);
 }
 
-void MainWindow::onMarkdownRendered(quint64 requestId, const QString &htmlFilePath)
+void MainWindow::onMarkdownRendered(quint64 requestId, const QString &html)
 {
     if (requestId != m_activeRenderRequestId) {
-        QFile::remove(htmlFilePath);
         return;
     }
 
-    m_renderedHtmlFilePath = htmlFilePath;
-    m_htmlRenderingFinished = true;
-    startPreviewLoadIfReady();
+    if (m_initialPreviewRendering) {
+        m_renderedHtml = html;
+        m_htmlRenderingFinished = true;
+        finishInitialPreviewIfReady();
+        return;
+    }
+
+    m_activeRenderRequestId = 0;
+    if (m_document.status != DocumentStatus::Converting) {
+        ui->markdownPreview->setHtml(html);
+    }
 }
 
-void MainWindow::onMarkdownRenderFailed(quint64 requestId, const QString &error)
+void MainWindow::onMarkdownEditorTextChanged()
 {
-    failRendering(requestId, error);
+    if (m_editorInsertionActive || m_document.status != DocumentStatus::Completed) {
+        return;
+    }
+
+    m_document.markdown = ui->markdownEditor->toPlainText();
+    m_document.modified = true;
+    m_activeRenderRequestId = 0;
+    m_previewUpdateTimer->start();
+    updateDocumentPresentation();
+}
+
+void MainWindow::renderEditorPreview()
+{
+    if (m_document.status != DocumentStatus::Completed) {
+        return;
+    }
+
+    const quint64 requestId = ++m_lastRenderRequestId;
+    m_activeRenderRequestId = requestId;
+    m_initialPreviewRendering = false;
+    emit renderMarkdownRequested(requestId, m_document.markdown);
 }
 
 void MainWindow::insertNextEditorChunk()
@@ -250,28 +274,6 @@ void MainWindow::insertNextEditorChunk()
     } else {
         m_editorChunkTimer->start(EditorChunkDelayMilliseconds);
     }
-}
-
-void MainWindow::onPreviewLoadFinished(bool success)
-{
-    if (!m_previewLoadPending
-        || m_previewLoadRequestId != m_activeRenderRequestId
-        || ui->markdownPreview->url() != m_expectedPreviewUrl) {
-        return;
-    }
-
-    const quint64 requestId = m_previewLoadRequestId;
-    m_previewLoadPending = false;
-
-    if (!success) {
-        failRendering(requestId, tr("The generated preview could not be loaded."));
-        return;
-    }
-
-    m_activeRenderRequestId = 0;
-    m_previewLoadRequestId = 0;
-    m_document.status = DocumentStatus::Completed;
-    updateDocumentPresentation();
 }
 
 bool MainWindow::isDocumentBusy() const
@@ -335,61 +337,38 @@ void MainWindow::finishEditorInsertion()
     ui->markdownEditor->setUpdatesEnabled(true);
     ui->markdownEditor->viewport()->update();
 
-    startPreviewLoadIfReady();
+    finishInitialPreviewIfReady();
 }
 
-void MainWindow::startPreviewLoadIfReady()
+void MainWindow::finishInitialPreviewIfReady()
 {
     if (m_activeRenderRequestId == 0
+        || !m_initialPreviewRendering
         || !m_editorInsertionFinished
-        || !m_htmlRenderingFinished
-        || m_previewLoadPending) {
+        || !m_htmlRenderingFinished) {
         return;
     }
 
-    m_previewLoadRequestId = m_activeRenderRequestId;
-    m_expectedPreviewUrl = QUrl::fromLocalFile(m_renderedHtmlFilePath);
-    m_expectedPreviewUrl.setFragment(QStringLiteral("render-%1")
-                                         .arg(m_previewLoadRequestId));
-    m_previewLoadPending = true;
-    ui->markdownPreview->load(m_expectedPreviewUrl);
-}
-
-void MainWindow::failRendering(quint64 requestId, const QString &error)
-{
-    if (requestId != m_activeRenderRequestId) {
-        return;
-    }
-
-    const QString message = error.trimmed().isEmpty()
-                                ? tr("Markdown preview rendering failed.")
-                                : error.trimmed();
-
-    m_editorChunkTimer->stop();
-    m_previewLoadPending = false;
-    m_previewLoadRequestId = 0;
+    ui->markdownPreview->setHtml(m_renderedHtml);
     m_activeRenderRequestId = 0;
-    finishEditorInsertion();
-    m_document.status = DocumentStatus::Failed;
+    m_initialPreviewRendering = false;
+    m_renderedHtml.clear();
+    m_document.status = DocumentStatus::Completed;
+    m_document.modified = false;
+    ui->markdownEditor->document()->setModified(false);
     updateDocumentPresentation();
-
-    const QString fileName = QFileInfo(m_document.sourceFilePath).fileName();
-    ui->statusbar->showMessage(tr("%1 | Preview Rendering Failed: %2")
-                                   .arg(fileName, message));
-    QMessageBox::critical(this, tr("Preview Rendering Failed"), message);
 }
 
 void MainWindow::invalidateRenderRequest()
 {
+    m_previewUpdateTimer->stop();
     m_editorChunkTimer->stop();
     m_activeRenderRequestId = 0;
-    m_previewLoadRequestId = 0;
-    m_previewLoadPending = false;
+    m_initialPreviewRendering = false;
     finishEditorInsertion();
     m_htmlRenderingFinished = false;
     m_editorInsertionFinished = false;
-    m_renderedHtmlFilePath.clear();
-    m_expectedPreviewUrl.clear();
+    m_renderedHtml.clear();
 }
 
 void MainWindow::updateDocumentPresentation()
@@ -400,7 +379,9 @@ void MainWindow::updateDocumentPresentation()
         setWindowTitle(tr("MarkItDown Viewer"));
         ui->statusbar->showMessage(tr("Ready"));
     } else {
-        setWindowTitle(tr("MarkItDown Viewer - %1").arg(fileName));
+        setWindowTitle(tr("MarkItDown Viewer - %1%2")
+                           .arg(fileName, m_document.modified ? QStringLiteral(" *")
+                                                             : QString()));
 
         switch (m_document.status) {
         case DocumentStatus::Ready:
