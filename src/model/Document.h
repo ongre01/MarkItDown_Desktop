@@ -8,6 +8,7 @@ enum class DocumentStatus
     Empty,
     Ready,
     Converting,
+    Rendering,
     Completed,
     Failed
 };
