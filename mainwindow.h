@@ -19,7 +19,12 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+private slots:
+    void openFile();
+
 private:
+    void updateDocumentPresentation();
+
     Ui::MainWindow *ui;
     Document m_document;
 };
