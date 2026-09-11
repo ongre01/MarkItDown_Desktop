@@ -1,4 +1,4 @@
-QT       += core gui
+QT       += core gui webenginewidgets
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -12,13 +12,15 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     src/controller/DocumentController.cpp \
-    src/markitdown/MarkItDownManager.cpp
+    src/markitdown/MarkItDownManager.cpp \
+    src/rendering/MarkdownDocumentRenderer.cpp
 
 HEADERS += \
     mainwindow.h \
     src/controller/DocumentController.h \
     src/markitdown/MarkItDownManager.h \
-    src/model/Document.h
+    src/model/Document.h \
+    src/rendering/MarkdownDocumentRenderer.h
 
 FORMS += \
     mainwindow.ui

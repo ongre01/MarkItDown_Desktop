@@ -40,11 +40,7 @@
         <string>Markdown Editor</string>
        </property>
       </widget>
-      <widget class="QTextBrowser" name="markdownPreview">
-       <property name="placeholderText">
-        <string>Markdown Preview</string>
-       </property>
-      </widget>
+      <widget class="QWebEngineView" name="markdownPreview"/>
      </widget>
     </item>
    </layout>
@@ -119,6 +115,13 @@
    </property>
   </action>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>QWebEngineView</class>
+   <extends>QWidget</extends>
+   <header>QtWebEngineWidgets/QWebEngineView</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

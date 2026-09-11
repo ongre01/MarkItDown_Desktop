@@ -26,15 +26,15 @@
 | 빌드 시스템 | qmake (`MarkItDown_Desktop.pro`) |
 | C++ 표준 | C++17 |
 | 권장 Qt 키트 | Qt 6.x, MSVC 2022 64-bit |
-| Qt 모듈 | Core, Gui, Widgets |
+| Qt 모듈 | Core, Gui, Widgets, WebEngineWidgets |
 | UI 컴파일 | `uic`가 `mainwindow.ui`에서 `ui_mainwindow.h` 생성 |
 | 실행 파일 | `MarkItDown_Desktop.exe` |
 | 변환 백엔드 | Python 3.10 이상 + Microsoft MarkItDown CLI (`QProcess` 비동기 실행) |
 
 현재 `.pro` 파일에 등록된 입력은 다음과 같다.
 
-- 소스: `main.cpp`, `mainwindow.cpp`, `src/markitdown/MarkItDownManager.cpp`
-- 헤더: `mainwindow.h`, `src/model/Document.h`, `src/markitdown/MarkItDownManager.h`
+- 소스: `main.cpp`, `mainwindow.cpp`, `src/controller/DocumentController.cpp`, `src/markitdown/MarkItDownManager.cpp`, `src/rendering/MarkdownDocumentRenderer.cpp`
+- 헤더: `mainwindow.h`, `src/controller/DocumentController.h`, `src/model/Document.h`, `src/markitdown/MarkItDownManager.h`, `src/rendering/MarkdownDocumentRenderer.h`
 - 폼: `mainwindow.ui`
 
 새 C++/헤더/UI/리소스 파일을 추가하면 반드시 `.pro` 파일의 `SOURCES`, `HEADERS`, `FORMS`, `RESOURCES` 중 해당 항목에도 등록한다.
@@ -51,7 +51,7 @@
    - MSVC v143 x64/x86 build tools
    - Windows SDK
 3. Qt 6.x의 `MSVC 2022 64-bit` 구성
-   - Qt Widgets 포함
+   - Qt Widgets 및 Qt WebEngine 포함
    - Qt Creator는 선택 사항이지만 GUI 작업 시 권장
 4. Git
 5. 변환 기능 작업 시 Python 3.10 이상
@@ -312,6 +312,8 @@ $env:Path = "$(Join-Path $qtRoot 'bin');$env:Path"
 2. 해당 구성의 nmake 성공
 3. 실행 파일 생성 확인
 4. GUI를 실행해 작업 티켓의 수동 확인 항목 점검
+   - 큰 문서는 `Converting...`과 `Rendering preview...` 단계 모두에서 창 이동과 클릭에 응답하는지 확인한다.
+   - 미리보기의 비동기 로드가 끝난 뒤에만 상태가 `Converted`로 바뀌고 `Open`, `Convert`, `Save`가 다시 활성화되는지 확인한다.
 5. 종료 후 `git status --short`로 예상한 소스와 문서만 변경되었는지 확인
 
 실행 파일이 생성되었다는 사실만으로 GUI 동작을 확인했다고 주장하지 않는다. GUI를 실제로 실행하지 못한 환경이면 빌드 검증만 완료했다고 명시한다. 변환 기능은 MarkItDown CLI와 대표 입력 파일을 실제로 실행한 경우에만 검증 완료로 기록한다.
