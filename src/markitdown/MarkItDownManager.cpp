@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QStringList>
 
@@ -138,6 +139,11 @@ void MarkItDownManager::convert(const QString &filePath)
         }
         return;
     }
+
+    QProcessEnvironment processEnvironment = QProcessEnvironment::systemEnvironment();
+    processEnvironment.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
+    processEnvironment.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
+    m_process->setProcessEnvironment(processEnvironment);
 
     m_process->start(program, QStringList{filePath});
 }
