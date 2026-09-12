@@ -57,7 +57,7 @@ private:
     void finishEditorInsertion();
     void finishInitialPreviewIfReady();
     void invalidateRenderRequest();
-    void updateDocumentPresentation();
+    void updateUiState();
 
     Ui::MainWindow *ui;
     DocumentController *m_controller;

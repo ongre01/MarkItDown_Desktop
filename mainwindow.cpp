@@ -176,7 +176,7 @@ MainWindow::MainWindow(QWidget *parent)
             this,
             &MainWindow::onMarkdownEditorTextChanged);
 
-    updateDocumentPresentation();
+    updateUiState();
 }
 
 MainWindow::~MainWindow()
@@ -306,7 +306,7 @@ bool MainWindow::openDocument(const QString &filePath)
     replaceEditorDocument();
     ui->markdownPreview->clear();
 
-    updateDocumentPresentation();
+    updateUiState();
     return true;
 }
 
@@ -319,7 +319,7 @@ void MainWindow::convertFile()
     const QFileInfo sourceInfo(m_document.sourceFilePath);
     if (!sourceInfo.exists() || !sourceInfo.isFile()) {
         m_document.status = DocumentStatus::Failed;
-        updateDocumentPresentation();
+        updateUiState();
         ui->statusbar->showMessage(
             tr("%1 | Source File Not Found").arg(sourceInfo.fileName()));
         QMessageBox::warning(
@@ -335,7 +335,7 @@ void MainWindow::convertFile()
     // Disable conversion-sensitive actions immediately so a second request cannot
     // be queued while QProcess is transitioning to its Starting state.
     m_document.status = DocumentStatus::Converting;
-    updateDocumentPresentation();
+    updateUiState();
 
     m_controller->convert(m_document.sourceFilePath);
 }
@@ -387,7 +387,7 @@ void MainWindow::saveMarkdownAs()
 void MainWindow::onConversionStarted()
 {
     m_document.status = DocumentStatus::Converting;
-    updateDocumentPresentation();
+    updateUiState();
 }
 
 void MainWindow::onConversionFinished(const QString &markdown)
@@ -408,7 +408,7 @@ void MainWindow::onConversionFinished(const QString &markdown)
     replaceEditorDocument();
     startEditorInsertion(markdown);
 
-    updateDocumentPresentation();
+    updateUiState();
     emit renderMarkdownRequested(requestId, markdown);
 }
 
@@ -424,7 +424,7 @@ void MainWindow::onConversionFailed(ConversionError error, const QString &detail
     }
 
     m_document.status = DocumentStatus::Failed;
-    updateDocumentPresentation();
+    updateUiState();
 
     const QString fileName = QFileInfo(m_document.sourceFilePath).fileName();
     ui->statusbar->showMessage(
@@ -461,7 +461,7 @@ void MainWindow::onMarkdownEditorTextChanged()
     m_document.modified = true;
     m_activeRenderRequestId = 0;
     m_previewUpdateTimer->start();
-    updateDocumentPresentation();
+    updateUiState();
 }
 
 void MainWindow::renderEditorPreview()
@@ -564,7 +564,7 @@ bool MainWindow::saveMarkdownToFile(const QString &filePath)
     m_document.markdownFilePath = QFileInfo(filePath).absoluteFilePath();
     m_document.modified = false;
     ui->markdownEditor->document()->setModified(false);
-    updateDocumentPresentation();
+    updateUiState();
     ui->statusbar->showMessage(
         tr("Saved: %1").arg(QFileInfo(m_document.markdownFilePath).fileName()));
 
@@ -644,7 +644,7 @@ void MainWindow::finishInitialPreviewIfReady()
     m_document.status = DocumentStatus::Completed;
     m_document.modified = false;
     ui->markdownEditor->document()->setModified(false);
-    updateDocumentPresentation();
+    updateUiState();
 }
 
 void MainWindow::invalidateRenderRequest()
@@ -659,7 +659,7 @@ void MainWindow::invalidateRenderRequest()
     m_renderedHtml.clear();
 }
 
-void MainWindow::updateDocumentPresentation()
+void MainWindow::updateUiState()
 {
     const QString fileName = QFileInfo(m_document.sourceFilePath).fileName();
 
@@ -692,13 +692,29 @@ void MainWindow::updateDocumentPresentation()
         }
     }
 
-    const bool isBusy = m_document.status == DocumentStatus::Converting
-                        || m_document.status == DocumentStatus::Rendering;
-    const bool hasDocument = !m_document.sourceFilePath.isEmpty();
-    const bool hasMarkdown = m_document.status == DocumentStatus::Completed;
+    bool openEnabled = true;
+    bool convertEnabled = false;
+    bool saveEnabled = false;
 
-    ui->actionOpen->setEnabled(!isBusy);
-    ui->actionConvert->setEnabled(hasDocument && !isBusy);
-    ui->actionSave->setEnabled(hasMarkdown && !isBusy);
-    ui->actionSaveAs->setEnabled(hasMarkdown && !isBusy);
+    switch (m_document.status) {
+    case DocumentStatus::Empty:
+        break;
+    case DocumentStatus::Ready:
+    case DocumentStatus::Failed:
+        convertEnabled = true;
+        break;
+    case DocumentStatus::Converting:
+    case DocumentStatus::Rendering:
+        openEnabled = false;
+        break;
+    case DocumentStatus::Completed:
+        convertEnabled = true;
+        saveEnabled = true;
+        break;
+    }
+
+    ui->actionOpen->setEnabled(openEnabled);
+    ui->actionConvert->setEnabled(convertEnabled);
+    ui->actionSave->setEnabled(saveEnabled);
+    ui->actionSaveAs->setEnabled(saveEnabled);
 }
