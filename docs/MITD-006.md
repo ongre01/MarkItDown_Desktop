@@ -60,7 +60,7 @@ WebEngine 모듈, 임시 HTML 파일, 외부 Markdown 라이브러리는 필요�
 ## 확인 항목
 
 1. Qt 6 MSVC 2022 64-bit 구성에서 qmake와 Debug 빌드가 성공하는지 확인한다.
-2. `example/test.pdf`를 열고 Convert를 실행한다.
+2. `example/test.pdf`를 열고 별도 `Convert` 조작 없이 변환이 시작되는지 확인한다.
 3. `Converting...`과 `Rendering preview...` 동안 창을 이동하고 반복 클릭해 응답성을 확인한다.
 4. 변환 후 제목, 표, 목록이 오른쪽 미리보기에 표시되는지 확인한다.
 5. 왼쪽 편집기의 Markdown을 수정하고 오른쪽 미리보기가 갱신되는지 확인한다.

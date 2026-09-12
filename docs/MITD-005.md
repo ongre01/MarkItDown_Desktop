@@ -3,7 +3,7 @@
 ## 구현 내용
 
 - `DocumentController`를 추가해 `MainWindow`와 `MarkItDownManager` 사이의 변환 요청 및 결과 신호를 중계한다.
-- `Convert` 액션을 현재 문서의 원본 경로에 대한 비동기 변환 요청과 연결했다.
+- `Convert` 액션을 현재 문서의 원본 경로에 대한 비동기 변환 요청과 연결했으며, 지원 파일을 정상적으로 열 때도 같은 변환 경로를 자동 호출한다.
 - 변환 요청 시 `Document.status`를 `Converting`으로 변경하고 `Open`, `Convert`, `Save` 액션을 비활성화한다.
 - 변환 성공 시 stdout Markdown을 `Document.markdown`에 저장하고 상태를 `Rendering`으로 변경한 뒤, 응답성을 유지하는 렌더링 파이프라인으로 편집기와 미리보기에 표시한다.
 - 변환 실패 시 상태를 `Failed`로 변경하고 상태 표시줄과 오류 메시지 상자에 원인을 표시한다.
@@ -39,9 +39,9 @@ Windows 빌드는 실행 파일과 같은 폴더의 `python-venv`에 MarkItDown 
 ## 확인 방법
 
 1. qmake를 다시 실행하고 Qt 6 MSVC 2022 64-bit Debug 구성을 빌드한다.
-2. `markitdown`을 찾을 수 있는 환경에서 `example/`의 지원 파일을 연다.
-3. `Convert`를 누르고 변환 중 세 액션이 비활성화되며 상태 표시줄에 `Converting...`이 표시되는지 확인한다.
+2. `markitdown`을 찾을 수 있는 환경에서 `example/`의 지원 파일을 열고, 별도 조작 없이 변환이 시작되는지 확인한다.
+3. 변환 중 세 액션이 비활성화되며 상태 표시줄에 `Converting...`이 표시되는지 확인한다.
 4. `Converting...`과 `Rendering preview...` 중 창을 반복해서 클릭하거나 이동하고 Windows가 창을 `응답 없음`으로 표시하지 않는지 확인한다.
 5. 미리보기 로드 완료 후 Markdown이 편집기와 미리보기에 나타나고 상태가 `Converted`로 바뀌며 `Open`, `Convert`, `Save`가 활성화되는지 확인한다.
-6. CLI를 찾을 수 없는 환경에서 변환해 오류 메시지 상자와 상태 표시줄이 실패 원인을 표시하고 `Open`과 `Convert`가 다시 활성화되는지 확인한다.
+6. CLI를 찾을 수 없는 환경에서 파일을 열어 자동 변환 오류 메시지 상자와 상태 표시줄이 실패 원인을 표시하고 `Open`과 `Convert`가 다시 활성화되는지 확인한다.
 7. 파일을 연 뒤 다른 파일을 다시 열거나 창을 닫아도 접근 위반으로 프로세스가 종료되지 않는지 확인한다.

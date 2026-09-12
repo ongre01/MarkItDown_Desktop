@@ -307,6 +307,7 @@ bool MainWindow::openDocument(const QString &filePath)
     ui->markdownPreview->clear();
 
     updateUiState();
+    convertFile();
     return true;
 }
 
