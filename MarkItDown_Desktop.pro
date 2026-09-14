@@ -24,6 +24,7 @@ HEADERS += \
     mainwindow.h \
     src/controller/DocumentController.h \
     src/io/DocumentFileOperations.h \
+    src/markitdown/IMarkItDownManager.h \
     src/markitdown/MarkItDownExecutableResolver.h \
     src/markitdown/MarkItDownManager.h \
     src/markitdown/ProcessRunner.h \

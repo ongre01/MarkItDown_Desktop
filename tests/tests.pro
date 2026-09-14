@@ -6,7 +6,8 @@ SUBDIRS += \
     markdown_render_state \
     conversion_error_presentation \
     markdown_document_renderer \
-    markitdown_manager
+    markitdown_manager \
+    document_controller
 
 document_file_operations.file = $$PWD/unit/tst_DocumentFileOperations.pro
 document_file_operations.makefile = Makefile.DocumentFileOperations
@@ -22,3 +23,6 @@ markdown_document_renderer.makefile = Makefile.MarkdownDocumentRenderer
 
 markitdown_manager.file = $$PWD/component/tst_MarkItDownManager.pro
 markitdown_manager.makefile = Makefile.MarkItDownManager
+
+document_controller.file = $$PWD/component/tst_DocumentController.pro
+document_controller.makefile = Makefile.DocumentController

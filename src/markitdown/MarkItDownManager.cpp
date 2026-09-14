@@ -21,7 +21,7 @@ MarkItDownManager::MarkItDownManager(
     std::unique_ptr<IProcessRunner> processRunner,
     std::unique_ptr<IMarkItDownExecutableResolver> executableResolver,
     QObject *parent)
-    : QObject(parent)
+    : IMarkItDownManager(parent)
     , m_processRunner(std::move(processRunner))
     , m_executableResolver(std::move(executableResolver))
 {

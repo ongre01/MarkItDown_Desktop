@@ -34,7 +34,7 @@
 현재 `.pro` 파일에 등록된 입력은 다음과 같다.
 
 - 소스: `main.cpp`, `mainwindow.cpp`, `src/controller/DocumentController.cpp`, `src/io/DocumentFileOperations.cpp`, `src/markitdown/MarkItDownExecutableResolver.cpp`, `src/markitdown/MarkItDownManager.cpp`, `src/markitdown/ProcessRunner.cpp`, `src/rendering/MarkdownDocumentRenderer.cpp`, `src/rendering/MarkdownRenderState.cpp`, `src/ui/ConversionErrorPresentation.cpp`
-- 헤더: `mainwindow.h`, `src/controller/DocumentController.h`, `src/io/DocumentFileOperations.h`, `src/model/ConversionError.h`, `src/model/Document.h`, `src/markitdown/MarkItDownExecutableResolver.h`, `src/markitdown/MarkItDownManager.h`, `src/markitdown/ProcessRunner.h`, `src/rendering/MarkdownDocumentRenderer.h`, `src/rendering/MarkdownRenderState.h`, `src/ui/ConversionErrorPresentation.h`
+- 헤더: `mainwindow.h`, `src/controller/DocumentController.h`, `src/io/DocumentFileOperations.h`, `src/model/ConversionError.h`, `src/model/Document.h`, `src/markitdown/IMarkItDownManager.h`, `src/markitdown/MarkItDownExecutableResolver.h`, `src/markitdown/MarkItDownManager.h`, `src/markitdown/ProcessRunner.h`, `src/rendering/MarkdownDocumentRenderer.h`, `src/rendering/MarkdownRenderState.h`, `src/ui/ConversionErrorPresentation.h`
 - 폼: `mainwindow.ui`
 
 Windows 빌드는 추가로 `scripts/install_markitdown_backend.ps1`와
@@ -52,11 +52,13 @@ Unit/Component Test가 등록되어 있다.
 - `tst_ConversionErrorPresentation`
 - `tst_MarkdownDocumentRenderer`
 - `tst_MarkItDownManager` (Fake process/resolver 기반 Component Test)
+- `tst_DocumentController` (Fake manager 기반 Component Test)
 
-`DocumentController`, `MainWindow` 자동화 테스트는 아직 없다. `MarkItDownManager`는
+`MainWindow` 자동화 테스트는 아직 없다. `MarkItDownManager`는
 실제 executable을 사용하지 않는 Component Test로 lifecycle과 오류 계약을 검증한다.
-이 테스트와 애플리케이션 빌드 성공만으로 UI 변환 기능까지 검증했다고 표현해서는 안
-된다.
+`DocumentController`는 `IMarkItDownManager` 경계에 Fake를 주입해 요청 위임, 실행 상태,
+성공·실패 신호 중계를 검증한다. 이 테스트와 애플리케이션 빌드 성공만으로 UI 변환
+기능까지 검증했다고 표현해서는 안 된다.
 
 ## 3. 권장 개발 환경
 

@@ -6,7 +6,9 @@
 #include <QObject>
 #include <QString>
 
-class MarkItDownManager;
+#include <memory>
+
+class IMarkItDownManager;
 
 class DocumentController : public QObject
 {
@@ -14,6 +16,9 @@ class DocumentController : public QObject
 
 public:
     explicit DocumentController(QObject *parent = nullptr);
+    DocumentController(std::unique_ptr<IMarkItDownManager> markItDown,
+                       QObject *parent = nullptr);
+    ~DocumentController() override;
 
     void convert(const QString &filePath);
     bool isConverting() const;
@@ -24,7 +29,7 @@ signals:
     void conversionFailed(ConversionError error, const QString &details);
 
 private:
-    MarkItDownManager *const m_markItDown;
+    const std::unique_ptr<IMarkItDownManager> m_markItDown;
 };
 
 #endif // DOCUMENTCONTROLLER_H

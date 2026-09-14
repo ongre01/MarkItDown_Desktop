@@ -1,18 +1,16 @@
 #ifndef MARKITDOWNMANAGER_H
 #define MARKITDOWNMANAGER_H
 
+#include "IMarkItDownManager.h"
 #include "ProcessRunner.h"
-#include "../model/ConversionError.h"
 
 #include <QByteArray>
-#include <QObject>
-#include <QString>
 
 #include <memory>
 
 class IMarkItDownExecutableResolver;
 
-class MarkItDownManager : public QObject
+class MarkItDownManager : public IMarkItDownManager
 {
     Q_OBJECT
 
@@ -25,16 +23,9 @@ public:
         std::unique_ptr<IMarkItDownExecutableResolver> executableResolver,
         QObject *parent = nullptr);
 
-    void convert(const QString &filePath);
+    void convert(const QString &filePath) override;
 
-    bool isRunning() const;
-
-signals:
-    void started();
-
-    void finished(const QString &markdown);
-
-    void failed(ConversionError error, const QString &details);
+    bool isRunning() const override;
 
 private slots:
     void processFinished(int exitCode, IProcessRunner::ExitStatus exitStatus);
