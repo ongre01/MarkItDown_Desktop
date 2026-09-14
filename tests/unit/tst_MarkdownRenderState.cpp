@@ -9,9 +9,13 @@ class TestMarkdownRenderState : public QObject
 private slots:
     void beginInitialRequest_newRequest_createsAcceptedInitialRequest();
     void beginUpdateRequest_afterInitialRequest_rejectsPreviousRequest();
+    void beginUpdateRequest_consecutiveRequests_acceptsOnlyNewestRequest();
     void outOfOrderCompletion_newestAcceptedAndStaleRejected();
     void invalidate_activeRequest_resetsRequestState();
+    void invalidate_followedByNewRequest_acceptsOnlyNewRequest();
     void completeRequest_activeRequest_rejectsFurtherResults();
+    void completeRequest_followedByNewRequest_acceptsOnlyNewRequest();
+    void storeRenderedHtml_repeatedCallback_replacesPreviousHtml();
     void initialRequest_completionConditions_reportExpectedReadiness_data();
     void initialRequest_completionConditions_reportExpectedReadiness();
     void beginUpdateRequest_allCompletionConditions_neverReportsInitialReady();
@@ -56,6 +60,26 @@ void TestMarkdownRenderState::
 }
 
 void TestMarkdownRenderState::
+    beginUpdateRequest_consecutiveRequests_acceptsOnlyNewestRequest()
+{
+    // Arrange
+    MarkdownRenderState state;
+
+    // Act
+    const quint64 firstRequestId = state.beginUpdateRequest();
+    const quint64 secondRequestId = state.beginUpdateRequest();
+    const quint64 thirdRequestId = state.beginUpdateRequest();
+
+    // Assert
+    QVERIFY(firstRequestId < secondRequestId);
+    QVERIFY(secondRequestId < thirdRequestId);
+    QVERIFY(!state.accepts(firstRequestId));
+    QVERIFY(!state.accepts(secondRequestId));
+    QVERIFY(state.accepts(thirdRequestId));
+    QVERIFY(!state.isInitialRequest());
+}
+
+void TestMarkdownRenderState::
     outOfOrderCompletion_newestAcceptedAndStaleRejected()
 {
     // Arrange: request #1 starts, followed by request #2.
@@ -93,6 +117,26 @@ void TestMarkdownRenderState::invalidate_activeRequest_resetsRequestState()
 }
 
 void TestMarkdownRenderState::
+    invalidate_followedByNewRequest_acceptsOnlyNewRequest()
+{
+    // Arrange
+    MarkdownRenderState state;
+    const quint64 invalidatedRequestId = state.beginInitialRequest();
+    state.storeRenderedHtml(QStringLiteral("stale html"));
+    state.invalidate();
+
+    // Act
+    const quint64 newRequestId = state.beginUpdateRequest();
+
+    // Assert
+    QVERIFY(newRequestId > invalidatedRequestId);
+    QVERIFY(!state.accepts(invalidatedRequestId));
+    QVERIFY(state.accepts(newRequestId));
+    QVERIFY(!state.isInitialRequest());
+    QVERIFY(state.renderedHtml().isEmpty());
+}
+
+void TestMarkdownRenderState::
     completeRequest_activeRequest_rejectsFurtherResults()
 {
     // Arrange
@@ -106,6 +150,41 @@ void TestMarkdownRenderState::
     QVERIFY(!state.accepts(requestId));
     QVERIFY(!state.isInitialRequest());
     QVERIFY(state.renderedHtml().isEmpty());
+}
+
+void TestMarkdownRenderState::
+    completeRequest_followedByNewRequest_acceptsOnlyNewRequest()
+{
+    // Arrange
+    MarkdownRenderState state;
+    const quint64 completedRequestId = state.beginUpdateRequest();
+    state.completeRequest();
+
+    // Act
+    const quint64 newRequestId = state.beginInitialRequest();
+
+    // Assert
+    QVERIFY(newRequestId > completedRequestId);
+    QVERIFY(!state.accepts(completedRequestId));
+    QVERIFY(state.accepts(newRequestId));
+    QVERIFY(state.isInitialRequest());
+    QVERIFY(!state.isInitialRequestReady());
+}
+
+void TestMarkdownRenderState::
+    storeRenderedHtml_repeatedCallback_replacesPreviousHtml()
+{
+    // Arrange
+    MarkdownRenderState state;
+    const quint64 requestId = state.beginUpdateRequest();
+    state.storeRenderedHtml(QStringLiteral("<p>first</p>"));
+
+    // Act
+    state.storeRenderedHtml(QStringLiteral("<p>replacement</p>"));
+
+    // Assert
+    QVERIFY(state.accepts(requestId));
+    QCOMPARE(state.renderedHtml(), QStringLiteral("<p>replacement</p>"));
 }
 
 void TestMarkdownRenderState::

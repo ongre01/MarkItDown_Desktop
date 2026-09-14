@@ -54,6 +54,7 @@ void MarkItDownManager::convert(const QString &filePath)
     }
 
     m_standardError.clear();
+    m_conversionActive = false;
     m_failureReported = false;
 
     const QString program = m_executableResolver->resolve();
@@ -75,6 +76,7 @@ void MarkItDownManager::convert(const QString &filePath)
     processEnvironment.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
     m_processRunner->setProcessEnvironment(processEnvironment);
 
+    m_conversionActive = true;
     m_processRunner->start(program, QStringList{filePath});
 }
 
@@ -86,6 +88,10 @@ bool MarkItDownManager::isRunning() const
 void MarkItDownManager::processFinished(int exitCode,
                                         IProcessRunner::ExitStatus exitStatus)
 {
+    if (!m_conversionActive) {
+        return;
+    }
+
     collectStandardError();
 
     if (m_failureReported) {
@@ -101,6 +107,7 @@ void MarkItDownManager::processFinished(int exitCode,
             return;
         }
 
+        m_conversionActive = false;
         emit finished(markdown);
         return;
     }
@@ -116,6 +123,10 @@ void MarkItDownManager::processFinished(int exitCode,
 
 void MarkItDownManager::processError(IProcessRunner::ProcessError error)
 {
+    if (!m_conversionActive) {
+        return;
+    }
+
     collectStandardError();
 
     ConversionError conversionError = ConversionError::ProcessFailure;
@@ -138,6 +149,10 @@ void MarkItDownManager::processError(IProcessRunner::ProcessError error)
 
 void MarkItDownManager::collectStandardError()
 {
+    if (!m_conversionActive) {
+        return;
+    }
+
     m_standardError.append(m_processRunner->readAllStandardError());
 }
 
@@ -149,6 +164,7 @@ void MarkItDownManager::reportProcessFailure(ConversionError error,
     }
 
     m_failureReported = true;
+    m_conversionActive = false;
     emit failed(error, diagnosticDetails(processDetails));
 }
 

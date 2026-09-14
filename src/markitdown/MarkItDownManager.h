@@ -43,6 +43,7 @@ private:
     const std::unique_ptr<IProcessRunner> m_processRunner;
     const std::unique_ptr<IMarkItDownExecutableResolver> m_executableResolver;
     QByteArray m_standardError;
+    bool m_conversionActive = false;
     bool m_failureReported = false;
 };
 

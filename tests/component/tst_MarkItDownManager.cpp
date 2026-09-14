@@ -177,6 +177,8 @@ class TestMarkItDownManager : public QObject
 private slots:
     void initTestCase();
     void convert_success_emitsMarkdownAndCleansRunningState();
+    void process_successWithStdoutAndStderr_emitsMarkdownOnly();
+    void process_largeStdout_emitsCompleteMarkdown();
     void convert_whileRunning_emitsAlreadyRunning();
     void convert_missingExecutable_emitsExecutableNotFound_data();
     void convert_missingExecutable_emitsExecutableNotFound();
@@ -186,8 +188,12 @@ private slots:
     void process_emptyOutput_emitsEmptyOutputAndCleansRunningState();
     void processError_generalFailure_emitsProcessFailure_data();
     void processError_generalFailure_emitsProcessFailure();
+    void processError_stderrOnly_usesStderrAsDiagnostic();
+    void processError_multipleCallbacks_emitsFailureOnce();
     void processError_followedByFinished_emitsFailureOnce();
+    void processFinished_followedByUnexpectedCallbacks_emitsTerminalSignalOnce();
     void convert_afterFailure_startsCleanLifecycle();
+    void convert_afterSuccess_startsCleanLifecycle();
 };
 
 void TestMarkItDownManager::initTestCase()
@@ -224,6 +230,50 @@ void TestMarkItDownManager::
 
     harness.processRunner->complete(0, IProcessRunner::ExitStatus::NormalExit);
 
+    QCOMPARE(finishedSpy.count(), 1);
+    QCOMPARE(finishedSpy.at(0).at(0).toString(), markdown);
+    QCOMPARE(failedSpy.count(), 0);
+    QVERIFY(!harness.manager.isRunning());
+}
+
+void TestMarkItDownManager::
+    process_successWithStdoutAndStderr_emitsMarkdownOnly()
+{
+    // Arrange
+    ManagerHarness harness;
+    QSignalSpy finishedSpy(&harness.manager, &MarkItDownManager::finished);
+    QSignalSpy failedSpy(&harness.manager, &MarkItDownManager::failed);
+    const QString markdown = QStringLiteral("# valid output");
+    harness.processRunner->setStandardOutput(markdown.toUtf8());
+    harness.manager.convert(QStringLiteral("input.pdf"));
+    harness.processRunner->appendStandardError(
+        QByteArrayLiteral("non-fatal backend warning"));
+
+    // Act
+    harness.processRunner->complete(0, IProcessRunner::ExitStatus::NormalExit);
+
+    // Assert
+    QCOMPARE(finishedSpy.count(), 1);
+    QCOMPARE(finishedSpy.at(0).at(0).toString(), markdown);
+    QCOMPARE(failedSpy.count(), 0);
+    QVERIFY(!harness.manager.isRunning());
+}
+
+void TestMarkItDownManager::process_largeStdout_emitsCompleteMarkdown()
+{
+    // Arrange
+    ManagerHarness harness;
+    QSignalSpy finishedSpy(&harness.manager, &MarkItDownManager::finished);
+    QSignalSpy failedSpy(&harness.manager, &MarkItDownManager::failed);
+    const QString markdown = QStringLiteral("# Large\n\n")
+                             + QString(2 * 1024 * 1024, QLatin1Char('x'));
+    harness.processRunner->setStandardOutput(markdown.toUtf8());
+    harness.manager.convert(QStringLiteral("large.pdf"));
+
+    // Act
+    harness.processRunner->complete(0, IProcessRunner::ExitStatus::NormalExit);
+
+    // Assert
     QCOMPARE(finishedSpy.count(), 1);
     QCOMPARE(finishedSpy.at(0).at(0).toString(), markdown);
     QCOMPARE(failedSpy.count(), 0);
@@ -409,6 +459,49 @@ void TestMarkItDownManager::processError_generalFailure_emitsProcessFailure()
     QVERIFY(!harness.manager.isRunning());
 }
 
+void TestMarkItDownManager::
+    processError_stderrOnly_usesStderrAsDiagnostic()
+{
+    // Arrange
+    ManagerHarness harness;
+    QSignalSpy failedSpy(&harness.manager, &MarkItDownManager::failed);
+    const QString standardError = QString::fromUtf8(u8"백엔드 진단만 출력됨");
+    harness.manager.convert(QStringLiteral("input.pdf"));
+    harness.processRunner->setPendingStandardError(standardError.toUtf8());
+
+    // Act
+    harness.processRunner->fail(IProcessRunner::ProcessError::UnknownError, {});
+
+    // Assert
+    compareFailure(failedSpy,
+                   ConversionError::ProcessFailure,
+                   QStringLiteral("Standard error:\n%1").arg(standardError));
+    QVERIFY(!harness.manager.isRunning());
+}
+
+void TestMarkItDownManager::
+    processError_multipleCallbacks_emitsFailureOnce()
+{
+    // Arrange
+    ManagerHarness harness;
+    QSignalSpy failedSpy(&harness.manager, &MarkItDownManager::failed);
+    harness.manager.convert(QStringLiteral("input.pdf"));
+
+    // Act
+    harness.processRunner->fail(IProcessRunner::ProcessError::ReadError,
+                                QStringLiteral("first error"));
+    harness.processRunner->fail(IProcessRunner::ProcessError::WriteError,
+                                QStringLiteral("second error"));
+    harness.processRunner->fail(IProcessRunner::ProcessError::Crashed,
+                                QStringLiteral("third error"));
+
+    // Assert
+    compareFailure(failedSpy,
+                   ConversionError::ProcessFailure,
+                   QStringLiteral("first error"));
+    QVERIFY(!harness.manager.isRunning());
+}
+
 void TestMarkItDownManager::processError_followedByFinished_emitsFailureOnce()
 {
     // Arrange
@@ -425,6 +518,30 @@ void TestMarkItDownManager::processError_followedByFinished_emitsFailureOnce()
     compareFailure(failedSpy,
                    ConversionError::Crashed,
                    QStringLiteral("crash signal"));
+    QVERIFY(!harness.manager.isRunning());
+}
+
+void TestMarkItDownManager::
+    processFinished_followedByUnexpectedCallbacks_emitsTerminalSignalOnce()
+{
+    // Arrange
+    ManagerHarness harness;
+    QSignalSpy finishedSpy(&harness.manager, &MarkItDownManager::finished);
+    QSignalSpy failedSpy(&harness.manager, &MarkItDownManager::failed);
+    harness.processRunner->setStandardOutput(QByteArrayLiteral("# completed"));
+    harness.manager.convert(QStringLiteral("input.pdf"));
+    harness.processRunner->complete(0, IProcessRunner::ExitStatus::NormalExit);
+    QCOMPARE(finishedSpy.count(), 1);
+    QCOMPARE(failedSpy.count(), 0);
+
+    // Act: a completed lifecycle must ignore any late duplicate callbacks.
+    harness.processRunner->complete(0, IProcessRunner::ExitStatus::NormalExit);
+    harness.processRunner->fail(IProcessRunner::ProcessError::UnknownError,
+                                QStringLiteral("late process error"));
+
+    // Assert
+    QCOMPARE(finishedSpy.count(), 1);
+    QCOMPARE(failedSpy.count(), 0);
     QVERIFY(!harness.manager.isRunning());
 }
 
@@ -454,6 +571,32 @@ void TestMarkItDownManager::convert_afterFailure_startsCleanLifecycle()
     compareFailure(failedSpy,
                    ConversionError::NonZeroExit,
                    QStringLiteral("Exit code: 9"));
+    QVERIFY(!harness.manager.isRunning());
+}
+
+void TestMarkItDownManager::convert_afterSuccess_startsCleanLifecycle()
+{
+    // Arrange: finish the first lifecycle successfully.
+    ManagerHarness harness;
+    QSignalSpy finishedSpy(&harness.manager, &MarkItDownManager::finished);
+    QSignalSpy failedSpy(&harness.manager, &MarkItDownManager::failed);
+    harness.processRunner->setStandardOutput(QByteArrayLiteral("# first"));
+    harness.manager.convert(QStringLiteral("first.pdf"));
+    harness.processRunner->complete(0, IProcessRunner::ExitStatus::NormalExit);
+    QCOMPARE(finishedSpy.count(), 1);
+    QCOMPARE(failedSpy.count(), 0);
+
+    // Act: start and finish a second conversion on the same manager.
+    const QString secondMarkdown = QString::fromUtf8(u8"# 두 번째 결과");
+    harness.processRunner->setStandardOutput(secondMarkdown.toUtf8());
+    harness.manager.convert(QStringLiteral("second.pdf"));
+    harness.processRunner->complete(0, IProcessRunner::ExitStatus::NormalExit);
+
+    // Assert
+    QCOMPARE(harness.processRunner->startCallCount(), 2);
+    QCOMPARE(finishedSpy.count(), 2);
+    QCOMPARE(finishedSpy.at(1).at(0).toString(), secondMarkdown);
+    QCOMPARE(failedSpy.count(), 0);
     QVERIFY(!harness.manager.isRunning());
 }
 

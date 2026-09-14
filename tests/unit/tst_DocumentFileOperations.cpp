@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 #include <QtTest>
@@ -14,6 +15,9 @@ class TestDocumentFileOperations : public QObject
 private slots:
     void validateSourceDocument_supportedExtension_returnsValid_data();
     void validateSourceDocument_supportedExtension_returnsValid();
+    void validateSourceDocument_emptyPath_returnsNotFound();
+    void validateSourceDocument_relativePath_returnsAbsolutePath();
+    void validateSourceDocument_unicodeNameWithSpaces_returnsValid();
     void validateSourceDocument_missingFile_returnsNotFound();
     void validateSourceDocument_directory_returnsDirectoryError();
     void validateSourceDocument_unsupportedExtension_returnsUnsupportedExtension();
@@ -21,6 +25,9 @@ private slots:
     void normalizedMarkdownPath_withoutExtension_addsMdExtension();
     void normalizedMarkdownPath_withExtension_preservesExtension();
     void writeMarkdownUtf8_unicodeText_preservesUtf8Content();
+    void writeMarkdownUtf8_emptyMarkdown_createsEmptyFile();
+    void writeMarkdownUtf8_largeMarkdown_preservesAllContent();
+    void writeMarkdownUtf8_existingDestination_replacesContent();
     void writeMarkdownUtf8_missingParentDirectory_returnsFailure();
 };
 
@@ -69,6 +76,69 @@ void TestDocumentFileOperations::
     QCOMPARE(result.error, DocumentFileOperations::SourceDocumentError::None);
     QCOMPARE(result.absoluteFilePath, QFileInfo(sourceFile.fileName()).absoluteFilePath());
     QCOMPARE(result.extension, extension);
+}
+
+void TestDocumentFileOperations::
+    validateSourceDocument_emptyPath_returnsNotFound()
+{
+    // Arrange / Act
+    const auto result = DocumentFileOperations::validateSourceDocument(QString());
+
+    // Assert
+    QVERIFY(!result.isValid());
+    QCOMPARE(result.error, DocumentFileOperations::SourceDocumentError::NotFound);
+    QVERIFY(result.extension.isEmpty());
+}
+
+void TestDocumentFileOperations::
+    validateSourceDocument_relativePath_returnsAbsolutePath()
+{
+    // Arrange
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString absolutePath =
+        QDir(tempDir.path()).filePath(QStringLiteral("relative-source.pdf"));
+    QFile sourceFile(absolutePath);
+    QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+    sourceFile.close();
+
+    const QString originalCurrentPath = QDir::currentPath();
+    const auto restoreCurrentPath = qScopeGuard([originalCurrentPath]() {
+        QDir::setCurrent(originalCurrentPath);
+    });
+    QVERIFY(QDir::setCurrent(tempDir.path()));
+
+    // Act
+    const auto result = DocumentFileOperations::validateSourceDocument(
+        QStringLiteral("relative-source.pdf"));
+
+    // Assert
+    QVERIFY(result.isValid());
+    QCOMPARE(result.error, DocumentFileOperations::SourceDocumentError::None);
+    QCOMPARE(result.absoluteFilePath, QFileInfo(absolutePath).absoluteFilePath());
+    QCOMPARE(result.extension, QStringLiteral("pdf"));
+}
+
+void TestDocumentFileOperations::
+    validateSourceDocument_unicodeNameWithSpaces_returnsValid()
+{
+    // Arrange
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString filePath = QDir(tempDir.path()).filePath(
+        QString::fromUtf8(u8"자료 보고서.PdF"));
+    QFile sourceFile(filePath);
+    QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+    sourceFile.close();
+
+    // Act
+    const auto result = DocumentFileOperations::validateSourceDocument(filePath);
+
+    // Assert
+    QVERIFY(result.isValid());
+    QCOMPARE(result.error, DocumentFileOperations::SourceDocumentError::None);
+    QCOMPARE(result.absoluteFilePath, QFileInfo(filePath).absoluteFilePath());
+    QCOMPARE(result.extension, QStringLiteral("PdF"));
 }
 
 void TestDocumentFileOperations::
@@ -201,6 +271,72 @@ void TestDocumentFileOperations::writeMarkdownUtf8_unicodeText_preservesUtf8Cont
     QCOMPARE(bytes, markdown.toUtf8());
     QVERIFY(!bytes.startsWith(QByteArray::fromHex("efbbbf")));
     QCOMPARE(QString::fromUtf8(bytes), markdown);
+}
+
+void TestDocumentFileOperations::
+    writeMarkdownUtf8_emptyMarkdown_createsEmptyFile()
+{
+    // Arrange
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString filePath =
+        QDir(tempDir.path()).filePath(QStringLiteral("empty.md"));
+
+    // Act
+    const auto result = DocumentFileOperations::writeMarkdownUtf8(filePath, {});
+
+    // Assert
+    QVERIFY2(result.succeeded, qPrintable(result.errorMessage));
+    QFile savedFile(result.absoluteFilePath);
+    QVERIFY(savedFile.open(QIODevice::ReadOnly));
+    QCOMPARE(savedFile.readAll(), QByteArray());
+}
+
+void TestDocumentFileOperations::
+    writeMarkdownUtf8_largeMarkdown_preservesAllContent()
+{
+    // Arrange
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString filePath =
+        QDir(tempDir.path()).filePath(QStringLiteral("large.md"));
+    const QString markdown(1024 * 1024, QLatin1Char('x'));
+
+    // Act
+    const auto result = DocumentFileOperations::writeMarkdownUtf8(filePath, markdown);
+
+    // Assert
+    QVERIFY2(result.succeeded, qPrintable(result.errorMessage));
+    QFile savedFile(result.absoluteFilePath);
+    QVERIFY(savedFile.open(QIODevice::ReadOnly));
+    QCOMPARE(savedFile.readAll(), markdown.toUtf8());
+}
+
+void TestDocumentFileOperations::
+    writeMarkdownUtf8_existingDestination_replacesContent()
+{
+    // Arrange
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QString filePath =
+        QDir(tempDir.path()).filePath(QStringLiteral("existing.md"));
+    QFile existingFile(filePath);
+    QVERIFY(existingFile.open(QIODevice::WriteOnly));
+    QCOMPARE(existingFile.write(QByteArrayLiteral("old content")),
+             qsizetype(11));
+    existingFile.close();
+    const QString replacement = QString::fromUtf8(u8"# 새 내용\n");
+
+    // Act
+    const auto result =
+        DocumentFileOperations::writeMarkdownUtf8(filePath, replacement);
+
+    // Assert
+    QVERIFY2(result.succeeded, qPrintable(result.errorMessage));
+    QCOMPARE(result.absoluteFilePath, QFileInfo(filePath).absoluteFilePath());
+    QFile savedFile(filePath);
+    QVERIFY(savedFile.open(QIODevice::ReadOnly));
+    QCOMPARE(savedFile.readAll(), replacement.toUtf8());
 }
 
 void TestDocumentFileOperations::
