@@ -12,8 +12,8 @@ public:
     explicit MarkdownDocumentRenderer(QObject *parent = nullptr);
 
 public slots:
-    void render(quint64 requestId,
-                const QString &markdown);
+    virtual void render(quint64 requestId,
+                        const QString &markdown);
 
 signals:
     void rendered(quint64 requestId, const QString &html);

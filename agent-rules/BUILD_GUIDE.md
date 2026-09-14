@@ -33,8 +33,8 @@
 
 현재 `.pro` 파일에 등록된 입력은 다음과 같다.
 
-- 소스: `main.cpp`, `mainwindow.cpp`, `src/controller/DocumentController.cpp`, `src/io/DocumentFileOperations.cpp`, `src/markitdown/MarkItDownManager.cpp`, `src/rendering/MarkdownDocumentRenderer.cpp`, `src/rendering/MarkdownRenderState.cpp`, `src/ui/ConversionErrorPresentation.cpp`
-- 헤더: `mainwindow.h`, `src/controller/DocumentController.h`, `src/io/DocumentFileOperations.h`, `src/model/ConversionError.h`, `src/model/Document.h`, `src/markitdown/MarkItDownManager.h`, `src/rendering/MarkdownDocumentRenderer.h`, `src/rendering/MarkdownRenderState.h`, `src/ui/ConversionErrorPresentation.h`
+- 소스: `main.cpp`, `mainwindow.cpp`, `src/controller/DocumentController.cpp`, `src/io/DocumentFileOperations.cpp`, `src/markitdown/MarkItDownExecutableResolver.cpp`, `src/markitdown/MarkItDownManager.cpp`, `src/markitdown/ProcessRunner.cpp`, `src/rendering/MarkdownDocumentRenderer.cpp`, `src/rendering/MarkdownRenderState.cpp`, `src/ui/ConversionErrorPresentation.cpp`
+- 헤더: `mainwindow.h`, `src/controller/DocumentController.h`, `src/io/DocumentFileOperations.h`, `src/model/ConversionError.h`, `src/model/Document.h`, `src/markitdown/IMarkItDownManager.h`, `src/markitdown/MarkItDownExecutableResolver.h`, `src/markitdown/MarkItDownManager.h`, `src/markitdown/ProcessRunner.h`, `src/rendering/MarkdownDocumentRenderer.h`, `src/rendering/MarkdownRenderState.h`, `src/ui/ConversionErrorPresentation.h`, `src/ui/IMainWindowDialogs.h`
 - 폼: `mainwindow.ui`
 
 Windows 빌드는 추가로 `scripts/install_markitdown_backend.ps1`와
@@ -43,7 +43,29 @@ MarkItDown 백엔드를 준비한다. 이 두 파일은 `.pro`의 `DISTFILES`에
 
 새 C++/헤더/UI/리소스 파일을 추가하면 반드시 `.pro` 파일의 `SOURCES`, `HEADERS`, `FORMS`, `RESOURCES` 중 해당 항목에도 등록한다.
 
-현재 `MainWindow`, `DocumentController`, `MarkItDownManager`의 비동기 변환 흐름은 연결되어 있지만 자동화 테스트는 아직 없다. 따라서 빌드 성공만으로 UI 변환 기능까지 검증했다고 표현해서는 안 된다.
+현재 `MainWindow`, `DocumentController`, `MarkItDownManager`의 비동기 변환 흐름은
+연결되어 있다. `tests/tests.pro`는 `unit`, `component`, `ui` 카테고리 프로젝트를
+집계하며, 외부 프로세스에 의존하지 않는 다음 Qt Test가 등록되어 있다.
+
+- `tst_DocumentFileOperations`
+- `tst_MarkdownRenderState`
+- `tst_ConversionErrorPresentation`
+- `tst_MarkdownDocumentRenderer`
+- `tst_MarkItDownManager` (Fake process/resolver 기반 Component Test)
+- `tst_DocumentController` (Fake manager 기반 Component Test)
+- `tst_MainWindow` (Fake manager/dialog 및 controlled renderer 기반 UI Test)
+
+`MainWindow` UI Test는 실제 action/widget/status bar를 통해 Open, 변환 상태, editor/preview,
+stale render 거부, Save 및 새 문서 전환을 검증한다. native dialog와 외부 process는 사용하지
+않는다. `MarkItDownManager`는 실제 executable을 사용하지 않는 Component Test로 lifecycle과 오류 계약을 검증한다.
+`DocumentController`는 `IMarkItDownManager` 경계에 Fake를 주입해 요청 위임, 실행 상태,
+성공·실패 신호 중계를 검증한다. 이 테스트와 애플리케이션 빌드 성공만으로 UI 변환
+기능까지 검증했다고 표현해서는 안 된다.
+
+전체 suite는 테스트 빌드 루트의 `nmake /NOLOGO check`로 실행한다. 카테고리별 suite는
+같은 빌드 루트 아래 `unit`, `component`, `ui` 디렉터리에서 각각
+`nmake /NOLOGO check`로 실행한다. 상세 Qt Test log를 보존하는 표준 자동화 명령은
+`tests/run-tests.ps1`이다.
 
 ## 3. 권장 개발 환경
 
@@ -245,6 +267,87 @@ build\Desktop_Qt_6_MSVC2022_64bit-Release\release\MarkItDown_Desktop.exe
 
 정리가 필요하면 대상이 의도한 `build/<kit>-<configuration>` 폴더인지 절대 경로로 확인한 후 그 폴더 안에서 `nmake /NOLOGO clean`을 사용한다. 사용자 소스나 저장소 전체를 대상으로 재귀 삭제하지 않는다.
 
+### 7.3 Automated Test Suite
+
+자동 테스트는 애플리케이션과 분리된 `tests/tests.pro` qmake `subdirs` 프로젝트로
+구성한다. 최상위 프로젝트는 `unit`, `component`, `ui` 집계 프로젝트를 포함하고,
+각 카테고리 프로젝트가 해당 test executable을 등록한다. MSVC 개발자 환경을
+초기화한 동일한 PowerShell 세션에서 먼저 전체 test executable을 configure/build한다.
+
+```powershell
+$repoRoot = (Resolve-Path -LiteralPath '.').Path
+$qtRoot = 'C:\Qt\6.11.0\msvc2022_64'
+$qmake = Join-Path $qtRoot 'bin\qmake.exe'
+$testProject = Join-Path $repoRoot 'tests\tests.pro'
+$buildDir = Join-Path $repoRoot `
+    'build\Desktop_Qt_6_MSVC2022_64bit-UnitTests'
+
+New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
+$env:Path = "$(Join-Path $qtRoot 'bin');$env:Path"
+
+Push-Location $buildDir
+try {
+    & $qmake $testProject -spec win32-msvc
+    if ($LASTEXITCODE -ne 0) {
+        throw "Automated Test qmake failed: $LASTEXITCODE"
+    }
+
+    nmake /NOLOGO debug
+    if ($LASTEXITCODE -ne 0) {
+        throw "Automated Test build failed: $LASTEXITCODE"
+    }
+}
+finally {
+    Pop-Location
+}
+```
+
+빌드가 성공하면 `tests/run-tests.ps1`로 카테고리별 suite를 실행한다. 실행기는 Qt Test의
+text log를 콘솔에 출력하고 임시 로그를 정리하며, 선택한 target을 모두 실행한 뒤 실패한
+target 목록과 0이 아닌 종료 코드를 반환한다.
+
+```powershell
+$testRunner = Join-Path $repoRoot 'tests\run-tests.ps1'
+
+foreach ($category in @('unit', 'component', 'ui')) {
+    & $testRunner `
+        -BuildDirectory $buildDir `
+        -Category $category
+}
+```
+
+전체 suite는 같은 실행기의 `all` 카테고리로 실행한다.
+
+```powershell
+& $testRunner `
+    -BuildDirectory $buildDir `
+    -Category all
+```
+
+qmake 기본 진입점도 유지한다. test build 루트의 `nmake /NOLOGO check`는 전체 suite를,
+각 `unit`, `component`, `ui` 하위 빌드 디렉터리의 `nmake /NOLOGO check`는 해당
+카테고리만 실행한다. 자동화 로그와 실패 진단을 일관되게 남길 때는 위 실행기를 표준으로
+사용한다.
+
+각 테스트는 분류에 따라 `tests/unit/`, `tests/component/` 또는 `tests/ui/`의 독립 `.pro`
+파일에 production source와 test source를 명시한다. 카테고리의 `unit.pro`,
+`component.pro`, `ui.pro`가 독립 test executable을 집계한다. 실행 파일은 기본적으로
+다음 위치에 생성된다.
+
+```text
+build\Desktop_Qt_6_MSVC2022_64bit-UnitTests\unit\bin\
+build\Desktop_Qt_6_MSVC2022_64bit-UnitTests\component\bin\
+build\Desktop_Qt_6_MSVC2022_64bit-UnitTests\ui\bin\
+```
+
+테스트는 실제 MarkItDown executable, 대화상자, 네트워크 또는 developer별 절대
+경로를 사용하지 않는다. 파일 시스템 테스트는 `QTemporaryDir`와 `QTemporaryFile`을
+사용한다.
+
+`run-tests.ps1`의 Qt Test text output을 숨기거나 재작성하지 않는다. 실패 시 test suite와
+test case 이름, source 위치, `Actual`/`Expected` 비교값 및 Qt diagnostic이 실행기 출력에
+표시되어야 한다.
+
 ## 8. Qt Creator 빌드
 
 1. Qt Creator에서 `MarkItDown_Desktop.pro`를 연다.
@@ -311,7 +414,14 @@ $markitdown = Join-Path $venvDir 'Scripts\markitdown.exe'
 
 전체 형식 지원이 필요하지 않은 작업에서는 필요한 extra만 설치할 수 있다. 그러나 프로젝트의 목표가 MarkItDown 지원 형식을 폭넓게 제공하는 것이므로 기본 개발 환경은 `[all]`을 기준으로 한다.
 
-`MarkItDownManager`는 `QProcess`로 `markitdown <입력 파일>`을 비동기 실행한다. CLI는 `MARKITDOWN_EXECUTABLE` 환경 변수, 실행 파일과 같은 폴더의 `python-venv`, 실행 환경의 `PATH`, 실행 파일 또는 현재 작업 디렉터리 상위에 있는 개발용 `python-venv`/`build\python-venv` 순서로 찾는다. 개발 및 후속 연동 작업에서는 다음을 지킨다.
+`MarkItDownManager`는 production 기본 구현인 `QProcessRunner`를 통해
+`markitdown <입력 파일>`을 비동기 실행한다. 실행 경계는 `IProcessRunner`, CLI
+탐색은 `IMarkItDownExecutableResolver`로 주입할 수 있으며 기본 실행에서는 각각
+`QProcessRunner`와 `MarkItDownExecutableResolver`를 사용한다. CLI는
+`MARKITDOWN_EXECUTABLE` 환경 변수, 실행 파일과 같은 폴더의 `python-venv`, 실행
+환경의 `PATH`, 실행 파일 또는 현재 작업 디렉터리 상위에 있는 개발용
+`python-venv`/`build\python-venv` 순서로 찾는다. 개발 및 후속 연동 작업에서는
+다음을 지킨다.
 
 - 전역 PATH에 MarkItDown이 있다고 가정하지 않는다.
 - 빌드 결과에 준비된 앱 로컬 CLI를 PATH보다 우선해 빌드에서 검증한 버전을 사용한다.
@@ -341,15 +451,19 @@ $env:Path = "$(Join-Path $qtRoot 'bin');$env:Path"
 & '.\build\Desktop_Qt_6_MSVC2022_64bit-Debug\debug\MarkItDown_Desktop.exe'
 ```
 
-현재 자동화 테스트가 없으므로 구현 작업 후 최소 검증은 다음과 같다.
+자동 테스트 또는 test build 통합 작업 후 최소 검증은 다음과 같다.
 
-1. qmake 성공
-2. 해당 구성의 nmake 성공
+1. 새 shadow-build 디렉터리에서 `tests/tests.pro` qmake와 전체 test executable 빌드 성공
+2. 애플리케이션 qmake 및 해당 구성의 nmake 성공
 3. 실행 파일과 같은 폴더의 `python-venv\Scripts\markitdown.exe` 생성 및 `--help` 성공 확인
-4. GUI를 실행해 작업 티켓의 수동 확인 항목 점검
+4. `tests/run-tests.ps1 -Category unit` 성공
+5. `tests/run-tests.ps1 -Category component` 성공
+6. `tests/run-tests.ps1 -Category ui` 성공
+7. `tests/run-tests.ps1 -Category all`과 test build 루트의 `nmake /NOLOGO check` 성공
+8. GUI를 실행해 작업 티켓의 수동 확인 항목 점검
    - 큰 문서는 `Converting...`과 `Rendering preview...` 단계 모두에서 창 이동과 클릭에 응답하는지 확인한다.
    - 미리보기의 비동기 로드가 끝난 뒤에만 상태가 `Converted`로 바뀌고 `Open`, `Convert`, `Save`가 다시 활성화되는지 확인한다.
-5. 종료 후 `git status --short`로 예상한 소스와 문서만 변경되었는지 확인
+9. 종료 후 `git status --short`로 예상한 소스와 문서만 변경되었는지 확인
 
 실행 파일이 생성되었다는 사실만으로 GUI 동작을 확인했다고 주장하지 않는다. GUI를 실제로 실행하지 못한 환경이면 빌드 검증만 완료했다고 명시한다. 변환 기능은 MarkItDown CLI와 대표 입력 파일을 실제로 실행한 경우에만 검증 완료로 기록한다.
 

@@ -1,35 +1,36 @@
 #ifndef MARKITDOWNMANAGER_H
 #define MARKITDOWNMANAGER_H
 
-#include "../model/ConversionError.h"
+#include "IMarkItDownManager.h"
+#include "ProcessRunner.h"
 
 #include <QByteArray>
-#include <QObject>
-#include <QProcess>
-#include <QString>
 
-class MarkItDownManager : public QObject
+#include <memory>
+
+class IMarkItDownExecutableResolver;
+
+class MarkItDownManager : public IMarkItDownManager
 {
     Q_OBJECT
 
 public:
     explicit MarkItDownManager(QObject *parent = nullptr);
+    ~MarkItDownManager() override;
 
-    void convert(const QString &filePath);
+    MarkItDownManager(
+        std::unique_ptr<IProcessRunner> processRunner,
+        std::unique_ptr<IMarkItDownExecutableResolver> executableResolver,
+        QObject *parent = nullptr);
 
-    bool isRunning() const;
+    void convert(const QString &filePath) override;
 
-signals:
-    void started();
-
-    void finished(const QString &markdown);
-
-    void failed(ConversionError error, const QString &details);
+    bool isRunning() const override;
 
 private slots:
-    void processFinished(int exitCode, QProcess::ExitStatus exitStatus);
+    void processFinished(int exitCode, IProcessRunner::ExitStatus exitStatus);
 
-    void processError(QProcess::ProcessError error);
+    void processError(IProcessRunner::ProcessError error);
 
     void collectStandardError();
 
@@ -39,8 +40,10 @@ private:
     QString diagnosticDetails(const QString &processDetails = {}) const;
     QString decodedStandardError() const;
 
-    QProcess *const m_process;
+    const std::unique_ptr<IProcessRunner> m_processRunner;
+    const std::unique_ptr<IMarkItDownExecutableResolver> m_executableResolver;
     QByteArray m_standardError;
+    bool m_conversionActive = false;
     bool m_failureReported = false;
 };
 

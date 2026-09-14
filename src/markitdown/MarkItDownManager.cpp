@@ -1,116 +1,47 @@
 #include "MarkItDownManager.h"
 
-#include <QCoreApplication>
+#include "MarkItDownExecutableResolver.h"
+
 #include <QDir>
-#include <QFileInfo>
 #include <QProcessEnvironment>
-#include <QStandardPaths>
 #include <QStringList>
 
-namespace {
-
-QString existingFilePath(const QString &filePath)
-{
-    const QFileInfo fileInfo(filePath);
-    return fileInfo.isFile() ? fileInfo.absoluteFilePath() : QString{};
-}
-
-QString markItDownRelativeExecutablePath()
-{
-#ifdef Q_OS_WIN
-    return QStringLiteral("Scripts/markitdown.exe");
-#else
-    return QStringLiteral("bin/markitdown");
-#endif
-}
-
-QString findApplicationLocalExecutable()
-{
-    const QDir applicationDirectory(QCoreApplication::applicationDirPath());
-    return existingFilePath(
-        applicationDirectory.filePath(
-            QStringLiteral("python-venv/%1").arg(markItDownRelativeExecutablePath())));
-}
-
-QString findDevelopmentEnvironmentExecutable()
-{
-    const QString relativeExecutablePath = markItDownRelativeExecutablePath();
-
-    QStringList searchRoots{QCoreApplication::applicationDirPath(), QDir::currentPath()};
-    QStringList visitedDirectories;
-
-    for (const QString &searchRoot : searchRoots) {
-        QDir directory(searchRoot);
-
-        do {
-            const QString absoluteDirectory = directory.absolutePath();
-            if (visitedDirectories.contains(absoluteDirectory, Qt::CaseInsensitive)) {
-                continue;
-            }
-
-            visitedDirectories.append(absoluteDirectory);
-
-            const QStringList candidates{
-                directory.filePath(QStringLiteral("python-venv/%1").arg(relativeExecutablePath)),
-                directory.filePath(QStringLiteral("build/python-venv/%1").arg(relativeExecutablePath))};
-
-            for (const QString &candidate : candidates) {
-                const QString executable = existingFilePath(candidate);
-                if (!executable.isEmpty()) {
-                    return executable;
-                }
-            }
-        } while (directory.cdUp());
-    }
-
-    return {};
-}
-
-QString resolveMarkItDownExecutable()
-{
-    const QString configuredExecutable =
-        qEnvironmentVariable("MARKITDOWN_EXECUTABLE").trimmed();
-
-    if (!configuredExecutable.isEmpty()) {
-        const QString configuredFile = existingFilePath(configuredExecutable);
-        if (!configuredFile.isEmpty()) {
-            return configuredFile;
-        }
-
-        return QStandardPaths::findExecutable(configuredExecutable);
-    }
-
-    const QString applicationLocalExecutable = findApplicationLocalExecutable();
-    if (!applicationLocalExecutable.isEmpty()) {
-        return applicationLocalExecutable;
-    }
-
-    const QString pathExecutable =
-        QStandardPaths::findExecutable(QStringLiteral("markitdown"));
-    if (!pathExecutable.isEmpty()) {
-        return pathExecutable;
-    }
-
-    return findDevelopmentEnvironmentExecutable();
-}
-
-} // namespace
+#include <utility>
 
 MarkItDownManager::MarkItDownManager(QObject *parent)
-    : QObject(parent)
-    , m_process(new QProcess(this))
+    : MarkItDownManager(std::make_unique<QProcessRunner>(),
+                        std::make_unique<MarkItDownExecutableResolver>(),
+                        parent)
 {
-    connect(m_process, &QProcess::started, this, &MarkItDownManager::started);
-    connect(m_process,
-            &QProcess::readyReadStandardError,
+}
+
+MarkItDownManager::~MarkItDownManager() = default;
+
+MarkItDownManager::MarkItDownManager(
+    std::unique_ptr<IProcessRunner> processRunner,
+    std::unique_ptr<IMarkItDownExecutableResolver> executableResolver,
+    QObject *parent)
+    : IMarkItDownManager(parent)
+    , m_processRunner(std::move(processRunner))
+    , m_executableResolver(std::move(executableResolver))
+{
+    Q_ASSERT(m_processRunner);
+    Q_ASSERT(m_executableResolver);
+
+    connect(m_processRunner.get(),
+            &IProcessRunner::started,
+            this,
+            &MarkItDownManager::started);
+    connect(m_processRunner.get(),
+            &IProcessRunner::readyReadStandardError,
             this,
             &MarkItDownManager::collectStandardError);
-    connect(m_process,
-            &QProcess::errorOccurred,
+    connect(m_processRunner.get(),
+            &IProcessRunner::errorOccurred,
             this,
             &MarkItDownManager::processError);
-    connect(m_process,
-            qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+    connect(m_processRunner.get(),
+            &IProcessRunner::finished,
             this,
             &MarkItDownManager::processFinished);
 }
@@ -123,12 +54,12 @@ void MarkItDownManager::convert(const QString &filePath)
     }
 
     m_standardError.clear();
+    m_conversionActive = false;
     m_failureReported = false;
 
-    const QString program = resolveMarkItDownExecutable();
+    const QString program = m_executableResolver->resolve();
     if (program.isEmpty()) {
-        const QString configuredExecutable =
-            qEnvironmentVariable("MARKITDOWN_EXECUTABLE").trimmed();
+        const QString configuredExecutable = m_executableResolver->configuredExecutable();
 
         if (!configuredExecutable.isEmpty()) {
             emit failed(ConversionError::ExecutableNotFound,
@@ -143,37 +74,45 @@ void MarkItDownManager::convert(const QString &filePath)
     QProcessEnvironment processEnvironment = QProcessEnvironment::systemEnvironment();
     processEnvironment.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
     processEnvironment.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
-    m_process->setProcessEnvironment(processEnvironment);
+    m_processRunner->setProcessEnvironment(processEnvironment);
 
-    m_process->start(program, QStringList{filePath});
+    m_conversionActive = true;
+    m_processRunner->start(program, QStringList{filePath});
 }
 
 bool MarkItDownManager::isRunning() const
 {
-    return m_process->state() != QProcess::NotRunning;
+    return m_processRunner->isRunning();
 }
 
-void MarkItDownManager::processFinished(int exitCode, QProcess::ExitStatus exitStatus)
+void MarkItDownManager::processFinished(int exitCode,
+                                        IProcessRunner::ExitStatus exitStatus)
 {
+    if (!m_conversionActive) {
+        return;
+    }
+
     collectStandardError();
 
     if (m_failureReported) {
         return;
     }
 
-    if (exitStatus == QProcess::NormalExit && exitCode == 0) {
-        const QString markdown = QString::fromUtf8(m_process->readAllStandardOutput());
+    if (exitStatus == IProcessRunner::ExitStatus::NormalExit && exitCode == 0) {
+        const QString markdown =
+            QString::fromUtf8(m_processRunner->readAllStandardOutput());
 
         if (markdown.trimmed().isEmpty()) {
             reportProcessFailure(ConversionError::EmptyOutput);
             return;
         }
 
+        m_conversionActive = false;
         emit finished(markdown);
         return;
     }
 
-    if (exitStatus == QProcess::CrashExit) {
+    if (exitStatus == IProcessRunner::ExitStatus::CrashExit) {
         reportProcessFailure(ConversionError::Crashed);
         return;
     }
@@ -182,31 +121,39 @@ void MarkItDownManager::processFinished(int exitCode, QProcess::ExitStatus exitS
                          tr("Exit code: %1").arg(exitCode));
 }
 
-void MarkItDownManager::processError(QProcess::ProcessError error)
+void MarkItDownManager::processError(IProcessRunner::ProcessError error)
 {
+    if (!m_conversionActive) {
+        return;
+    }
+
     collectStandardError();
 
     ConversionError conversionError = ConversionError::ProcessFailure;
     switch (error) {
-    case QProcess::FailedToStart:
+    case IProcessRunner::ProcessError::FailedToStart:
         conversionError = ConversionError::FailedToStart;
         break;
-    case QProcess::Crashed:
+    case IProcessRunner::ProcessError::Crashed:
         conversionError = ConversionError::Crashed;
         break;
-    case QProcess::Timedout:
-    case QProcess::WriteError:
-    case QProcess::ReadError:
-    case QProcess::UnknownError:
+    case IProcessRunner::ProcessError::Timedout:
+    case IProcessRunner::ProcessError::WriteError:
+    case IProcessRunner::ProcessError::ReadError:
+    case IProcessRunner::ProcessError::UnknownError:
         break;
     }
 
-    reportProcessFailure(conversionError, m_process->errorString());
+    reportProcessFailure(conversionError, m_processRunner->errorString());
 }
 
 void MarkItDownManager::collectStandardError()
 {
-    m_standardError.append(m_process->readAllStandardError());
+    if (!m_conversionActive) {
+        return;
+    }
+
+    m_standardError.append(m_processRunner->readAllStandardError());
 }
 
 void MarkItDownManager::reportProcessFailure(ConversionError error,
@@ -217,6 +164,7 @@ void MarkItDownManager::reportProcessFailure(ConversionError error,
     }
 
     m_failureReported = true;
+    m_conversionActive = false;
     emit failed(error, diagnosticDetails(processDetails));
 }
 
