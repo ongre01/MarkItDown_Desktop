@@ -1,0 +1,45 @@
+# MITD-004 — MarkItDownManager 구현
+
+## 구현 내용
+
+- `MarkItDownManager`가 자식 `QProcess` 하나를 소유하고 `markitdown <입력 파일>` 형식으로 CLI를 실행한다.
+- 프로그램과 인자를 분리해 `QProcess::start()`에 전달하므로 공백이 포함된 파일 경로도 하나의 인자로 처리된다.
+- `QProcess`의 `started`, `finished`, `errorOccurred`, `readyReadStandardError` 신호를 사용하며 동기 대기 함수는 사용하지 않는다.
+- 자식 프로세스에는 현재 실행 환경을 상속하되 `PYTHONUTF8=1`과 `PYTHONIOENCODING=utf-8`을 강제한다. 따라서 Windows 시스템 코드 페이지와 관계없이 MarkItDown의 한글 및 기타 Unicode stdout/stderr가 UTF-8로 전달된다.
+- 프로세스가 실제 시작되면 `started()`를 전달하고, 정상 종료(`NormalExit`이면서 종료 코드 0) 시 UTF-8 stdout을 `finished(markdown)`로 반환한다.
+- stderr는 실행 중 비동기적으로 누적한다. 시작 오류나 비정상 종료 시 누적된 stderr를 `failed(ConversionError, details)`로 전달하고, stderr가 없으면 `QProcess` 오류 또는 종료 상태를 설명하는 기술 세부 정보를 전달한다.
+- 하나의 변환이 시작 중이거나 실행 중이면 추가 요청을 시작하지 않고 `Another conversion is already running.` 실패 신호를 보낸다.
+- 동일한 프로세스 오류에 대해 `errorOccurred`와 `finished`가 모두 발생해도 실패 신호를 중복 전달하지 않는다.
+
+## MarkItDown CLI 탐색
+
+`MarkItDownManager`는 다음 순서로 실행 파일을 찾는다.
+
+1. `MARKITDOWN_EXECUTABLE` 환경 변수로 지정한 파일 또는 명령
+2. 애플리케이션 실행 파일과 같은 폴더의 `python-venv`
+3. 실행 환경의 `PATH`에 등록된 `markitdown`
+4. 애플리케이션 디렉터리와 현재 작업 디렉터리의 상위 경로에서 발견되는 개발용 `python-venv` 또는 `build/python-venv`
+
+어느 경로에서도 찾지 못하면 설치, `PATH`, 환경 변수 설정 방법을 포함한 오류를 반환한다. 앱 로컬 환경은 빌드 후처리에서 자동으로 준비되며 PATH보다 우선하므로 빌드에서 검증한 버전을 사용한다. 마지막 단계는 저장소의 수동 개발 환경을 Qt Creator 또는 빌드 출력 디렉터리에서 사용할 수 있게 하는 개발 편의 기능이다.
+
+이 티켓은 CLI 실행 계층만 구현한다. `MainWindow`의 Convert 액션과 문서 상태를 이 클래스에 연결하는 작업은 컨트롤러/UI 통합 티켓의 범위다.
+
+## 확인 방법
+
+1. qmake를 다시 실행해 새 소스와 헤더가 프로젝트에 등록되는지 확인한다.
+2. Qt 6 MSVC 2022 64-bit Debug 구성을 빌드한다.
+3. `markitdown`을 찾을 수 있는 실행 환경에서 입력 파일을 변환해 `started()`와 `finished(markdown)`가 순서대로 전달되는지 확인한다.
+4. Windows 기본 코드 페이지가 UTF-8이 아닌 환경에서 `example/test.pptx`를 변환하고, 한글(`설계 자료`, `동작 기준`), 도형 기호(`◀`, `▶`, `▲`, `▼`), 단위 기호(`°C`)가 편집기와 미리보기에 손상 없이 표시되는지 확인한다.
+5. 저장한 Markdown을 UTF-8로 다시 읽어 위 문자가 동일하게 유지되는지 확인한다.
+6. 존재하지 않는 CLI 또는 변환에 실패하는 입력으로 `failed(ConversionError, details)`가 전달되는지 확인한다.
+7. 실행 중 `convert()`를 다시 호출해 두 번째 프로세스가 시작되지 않는지 확인한다.
+
+## 다국어 출력 검증 기록
+
+2026-09-12에 Windows 기본 출력 인코딩이 `cp949`인 환경에서 Qt 6.11.0 MSVC 2022
+64-bit Debug 빌드와 `example/test.pptx`로 확인했다. UTF-8 환경 강제 전에는 한글과
+기호가 손상됐지만, 적용 후 실제 GUI 변환이 `Converted | UTF-8 | Markdown` 상태로
+완료됐으며 편집기와 미리보기에서 한글, `◀/▶`, `▲/▼`, `°C`가 보존됐다. 변환
+출력에는 U+FFFD 대체 문자가 없었고, 동일한 프로세스 환경의 별도 stdout 확인에서
+한국어, 일본어, 중국어, 아랍어, 데바나가리 문자, 키릴 문자 및 emoji가 UTF-8로
+왕복했다.

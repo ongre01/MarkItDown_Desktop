@@ -80,3 +80,13 @@ CMakeLists.txt.user*
 .rcc/
 .uic/
 /build*/
+
+
+# codegraph
+.codegraph/
+
+# tapl
+.tapl/
+
+# codex
+.codex/

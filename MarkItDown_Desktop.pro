@@ -10,13 +10,47 @@ CONFIG += c++17
 
 SOURCES += \
     main.cpp \
-    mainwindow.cpp
+    mainwindow.cpp \
+    src/controller/DocumentController.cpp \
+    src/io/DocumentFileOperations.cpp \
+    src/markitdown/MarkItDownManager.cpp \
+    src/rendering/MarkdownDocumentRenderer.cpp \
+    src/rendering/MarkdownRenderState.cpp \
+    src/ui/ConversionErrorPresentation.cpp
 
 HEADERS += \
-    mainwindow.h
+    mainwindow.h \
+    src/controller/DocumentController.h \
+    src/io/DocumentFileOperations.h \
+    src/markitdown/MarkItDownManager.h \
+    src/model/ConversionError.h \
+    src/model/Document.h \
+    src/rendering/MarkdownDocumentRenderer.h \
+    src/rendering/MarkdownRenderState.h \
+    src/ui/ConversionErrorPresentation.h
 
 FORMS += \
     mainwindow.ui
+
+DISTFILES += \
+    requirements-markitdown.txt \
+    scripts/install_markitdown_backend.ps1
+
+win32 {
+    markitdownInstaller = $$shell_path($$PWD/scripts/install_markitdown_backend.ps1)
+    markitdownRequirements = $$shell_path($$PWD/requirements-markitdown.txt)
+
+    CONFIG(debug, debug|release) {
+        markitdownEnvironment = $$shell_path($$OUT_PWD/debug/python-venv)
+    } else {
+        markitdownEnvironment = $$shell_path($$OUT_PWD/release/python-venv)
+    }
+
+    QMAKE_POST_LINK += powershell.exe -NoProfile -ExecutionPolicy Bypass \
+        -File $$shell_quote($$markitdownInstaller) \
+        -Destination $$shell_quote($$markitdownEnvironment) \
+        -RequirementsFile $$shell_quote($$markitdownRequirements)
+}
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin
