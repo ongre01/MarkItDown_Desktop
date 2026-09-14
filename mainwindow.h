@@ -17,6 +17,7 @@ class MainWindow;
 QT_END_NAMESPACE
 
 class DocumentController;
+class IMainWindowDialogs;
 class MarkdownDocumentRenderer;
 class QDragEnterEvent;
 class QDropEvent;
@@ -32,6 +33,10 @@ class MainWindow : public QMainWindow
 
 public:
     explicit MainWindow(QWidget *parent = nullptr);
+    MainWindow(std::unique_ptr<DocumentController> controller,
+               std::unique_ptr<MarkdownDocumentRenderer> renderer,
+               std::unique_ptr<IMainWindowDialogs> dialogs,
+               QWidget *parent = nullptr);
     ~MainWindow() override;
 
 signals:
@@ -75,6 +80,7 @@ private:
     std::unique_ptr<Ui::MainWindow> ui;
     DocumentController *const m_controller;
     MarkdownDocumentRenderer *const m_renderer;
+    const std::unique_ptr<IMainWindowDialogs> m_dialogs;
     QTimer *const m_editorChunkTimer;
     QTimer *const m_previewUpdateTimer;
     QThread m_rendererThread;

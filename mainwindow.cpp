@@ -3,6 +3,7 @@
 #include "src/io/DocumentFileOperations.h"
 #include "src/rendering/MarkdownDocumentRenderer.h"
 #include "src/ui/ConversionErrorPresentation.h"
+#include "src/ui/IMainWindowDialogs.h"
 #include "ui_mainwindow.h"
 
 #include <QAction>
@@ -21,6 +22,8 @@
 #include <QTimer>
 #include <QUrl>
 
+#include <utility>
+
 namespace {
 
 constexpr qsizetype EditorChunkSize = 32 * 1024;
@@ -28,16 +31,75 @@ constexpr qsizetype MaximumEditorChunkSize = 64 * 1024;
 constexpr int EditorChunkDelayMilliseconds = 1;
 constexpr int PreviewUpdateDelayMilliseconds = 150;
 
+class NativeMainWindowDialogs final : public IMainWindowDialogs
+{
+public:
+    QString selectSourceDocument(QWidget *parent,
+                                 const QString &filter) override
+    {
+        return QFileDialog::getOpenFileName(
+            parent,
+            MainWindow::tr("Open Document"),
+            QString(),
+            filter);
+    }
+
+    QString selectMarkdownDestination(
+        QWidget *parent,
+        const QString &suggestedFilePath) override
+    {
+        return QFileDialog::getSaveFileName(
+            parent,
+            MainWindow::tr("Save Markdown As"),
+            suggestedFilePath,
+            MainWindow::tr("Markdown Files (*.md);;All Files (*.*)"));
+    }
+
+    void showWarning(QWidget *parent,
+                     const QString &title,
+                     const QString &message) override
+    {
+        QMessageBox::warning(parent, title, message);
+    }
+
+    void showCritical(QWidget *parent,
+                      const QString &title,
+                      const QString &message) override
+    {
+        QMessageBox::critical(parent, title, message);
+    }
+};
+
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
+    : MainWindow(std::make_unique<DocumentController>(),
+                 std::make_unique<MarkdownDocumentRenderer>(),
+                 std::make_unique<NativeMainWindowDialogs>(),
+                 parent)
+{
+}
+
+MainWindow::MainWindow(std::unique_ptr<DocumentController> controller,
+                       std::unique_ptr<MarkdownDocumentRenderer> renderer,
+                       std::unique_ptr<IMainWindowDialogs> dialogs,
+                       QWidget *parent)
     : QMainWindow(parent)
     , ui(std::make_unique<Ui::MainWindow>())
-    , m_controller(new DocumentController(this))
-    , m_renderer(new MarkdownDocumentRenderer)
+    , m_controller(controller.release())
+    , m_renderer(renderer.release())
+    , m_dialogs(std::move(dialogs))
     , m_editorChunkTimer(new QTimer(this))
     , m_previewUpdateTimer(new QTimer(this))
 {
+    Q_ASSERT(m_controller);
+    Q_ASSERT(m_renderer);
+    Q_ASSERT(m_dialogs);
+    Q_ASSERT(!m_controller->parent());
+    Q_ASSERT(!m_renderer->parent());
+
+    m_controller->setParent(this);
+
     ui->setupUi(this);
     setAcceptDrops(true);
     ui->markdownEditor->setAcceptDrops(false);
@@ -132,7 +194,7 @@ void MainWindow::dropEvent(QDropEvent *event)
 
     const QList<QUrl> urls = event->mimeData()->urls();
     if (urls.size() != 1) {
-        QMessageBox::warning(
+        m_dialogs->showWarning(
             this,
             tr("Open Document"),
             tr(u8"한 번에 하나의 파일만 열 수 있습니다."));
@@ -142,7 +204,7 @@ void MainWindow::dropEvent(QDropEvent *event)
 
     const QUrl &url = urls.constFirst();
     if (!url.isLocalFile()) {
-        QMessageBox::warning(
+        m_dialogs->showWarning(
             this,
             tr("Open Document"),
             tr(u8"로컬 파일만 열 수 있습니다."));
@@ -163,10 +225,8 @@ void MainWindow::openFile()
         return;
     }
 
-    const QString filePath = QFileDialog::getOpenFileName(
+    const QString filePath = m_dialogs->selectSourceDocument(
         this,
-        tr("Open Document"),
-        QString(),
         tr("Documents (%1)")
             .arg(DocumentFileOperations::supportedNameFilters().join(QLatin1Char(' '))));
 
@@ -256,11 +316,8 @@ void MainWindow::saveMarkdownAs()
             DocumentFileOperations::suggestedMarkdownPath(m_document.sourceFilePath);
     }
 
-    QString filePath = QFileDialog::getSaveFileName(
-        this,
-        tr("Save Markdown As"),
-        suggestedFilePath,
-        tr("Markdown Files (*.md);;All Files (*.*)"));
+    QString filePath =
+        m_dialogs->selectMarkdownDestination(this, suggestedFilePath);
 
     if (filePath.isEmpty()) {
         return;
@@ -307,7 +364,7 @@ void MainWindow::onConversionFailed(ConversionError error, const QString &detail
     const QString fileName = QFileInfo(m_document.sourceFilePath).fileName();
     ui->statusbar->showMessage(
         tr("%1 | Conversion Failed: %2").arg(fileName, presentation.summary));
-    QMessageBox::critical(this, presentation.title, message);
+    m_dialogs->showCritical(this, presentation.title, message);
 }
 
 void MainWindow::onMarkdownRendered(quint64 requestId, const QString &html)
@@ -431,20 +488,20 @@ void MainWindow::showSourceDocumentError(
 {
     switch (validation.error) {
     case DocumentFileOperations::SourceDocumentError::Directory:
-        QMessageBox::warning(
+        m_dialogs->showWarning(
             this,
             tr("Open Document"),
             tr(u8"폴더는 열 수 없습니다."));
         return;
     case DocumentFileOperations::SourceDocumentError::NotFound:
-        QMessageBox::warning(
+        m_dialogs->showWarning(
             this,
             tr("Source File Not Found"),
             tr(u8"원본 파일을 찾을 수 없습니다.\n\n%1")
                 .arg(QDir::toNativeSeparators(validation.absoluteFilePath)));
         return;
     case DocumentFileOperations::SourceDocumentError::NotFile:
-        QMessageBox::warning(
+        m_dialogs->showWarning(
             this,
             tr("Cannot Open Source File"),
             tr(u8"원본 파일을 열 수 없습니다.\n\n%1")
@@ -454,7 +511,7 @@ void MainWindow::showSourceDocumentError(
         const QString extension = validation.extension.isEmpty()
                                       ? tr(u8"확장자 없음")
                                       : QStringLiteral(".%1").arg(validation.extension);
-        QMessageBox::warning(
+        m_dialogs->showWarning(
             this,
             tr("Unsupported File Type"),
             tr(u8"지원하지 않는 파일 형식입니다.\n\n확장자: %1")
@@ -473,7 +530,7 @@ void MainWindow::showMarkdownSaveError(const QString &filePath, const QString &e
                                 : error.trimmed();
     ui->statusbar->showMessage(
         tr("Markdown Save Failed: %1").arg(details));
-    QMessageBox::critical(
+    m_dialogs->showCritical(
         this,
         tr("Markdown Save Failed"),
         tr(u8"Markdown 파일을 저장하지 못했습니다.\n\n경로:\n%1\n\n기술 세부 정보:\n%2")

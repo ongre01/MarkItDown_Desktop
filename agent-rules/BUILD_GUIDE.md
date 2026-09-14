@@ -34,7 +34,7 @@
 현재 `.pro` 파일에 등록된 입력은 다음과 같다.
 
 - 소스: `main.cpp`, `mainwindow.cpp`, `src/controller/DocumentController.cpp`, `src/io/DocumentFileOperations.cpp`, `src/markitdown/MarkItDownExecutableResolver.cpp`, `src/markitdown/MarkItDownManager.cpp`, `src/markitdown/ProcessRunner.cpp`, `src/rendering/MarkdownDocumentRenderer.cpp`, `src/rendering/MarkdownRenderState.cpp`, `src/ui/ConversionErrorPresentation.cpp`
-- 헤더: `mainwindow.h`, `src/controller/DocumentController.h`, `src/io/DocumentFileOperations.h`, `src/model/ConversionError.h`, `src/model/Document.h`, `src/markitdown/IMarkItDownManager.h`, `src/markitdown/MarkItDownExecutableResolver.h`, `src/markitdown/MarkItDownManager.h`, `src/markitdown/ProcessRunner.h`, `src/rendering/MarkdownDocumentRenderer.h`, `src/rendering/MarkdownRenderState.h`, `src/ui/ConversionErrorPresentation.h`
+- 헤더: `mainwindow.h`, `src/controller/DocumentController.h`, `src/io/DocumentFileOperations.h`, `src/model/ConversionError.h`, `src/model/Document.h`, `src/markitdown/IMarkItDownManager.h`, `src/markitdown/MarkItDownExecutableResolver.h`, `src/markitdown/MarkItDownManager.h`, `src/markitdown/ProcessRunner.h`, `src/rendering/MarkdownDocumentRenderer.h`, `src/rendering/MarkdownRenderState.h`, `src/ui/ConversionErrorPresentation.h`, `src/ui/IMainWindowDialogs.h`
 - 폼: `mainwindow.ui`
 
 Windows 빌드는 추가로 `scripts/install_markitdown_backend.ps1`와
@@ -44,8 +44,8 @@ MarkItDown 백엔드를 준비한다. 이 두 파일은 `.pro`의 `DISTFILES`에
 새 C++/헤더/UI/리소스 파일을 추가하면 반드시 `.pro` 파일의 `SOURCES`, `HEADERS`, `FORMS`, `RESOURCES` 중 해당 항목에도 등록한다.
 
 현재 `MainWindow`, `DocumentController`, `MarkItDownManager`의 비동기 변환 흐름은
-연결되어 있다. `tests/tests.pro`에는 GUI와 외부 프로세스에 의존하지 않는 다음 Qt Test
-Unit/Component Test가 등록되어 있다.
+연결되어 있다. `tests/tests.pro`에는 외부 프로세스에 의존하지 않는 다음 Qt Test
+Unit/Component/UI Test가 등록되어 있다.
 
 - `tst_DocumentFileOperations`
 - `tst_MarkdownRenderState`
@@ -53,9 +53,11 @@ Unit/Component Test가 등록되어 있다.
 - `tst_MarkdownDocumentRenderer`
 - `tst_MarkItDownManager` (Fake process/resolver 기반 Component Test)
 - `tst_DocumentController` (Fake manager 기반 Component Test)
+- `tst_MainWindow` (Fake manager/dialog 및 controlled renderer 기반 UI Test)
 
-`MainWindow` 자동화 테스트는 아직 없다. `MarkItDownManager`는
-실제 executable을 사용하지 않는 Component Test로 lifecycle과 오류 계약을 검증한다.
+`MainWindow` UI Test는 실제 action/widget/status bar를 통해 Open, 변환 상태, editor/preview,
+stale render 거부, Save 및 새 문서 전환을 검증한다. native dialog와 외부 process는 사용하지
+않는다. `MarkItDownManager`는 실제 executable을 사용하지 않는 Component Test로 lifecycle과 오류 계약을 검증한다.
 `DocumentController`는 `IMarkItDownManager` 경계에 Fake를 주입해 요청 위임, 실행 상태,
 성공·실패 신호 중계를 검증한다. 이 테스트와 애플리케이션 빌드 성공만으로 UI 변환
 기능까지 검증했다고 표현해서는 안 된다.
@@ -298,13 +300,14 @@ finally {
 }
 ```
 
-각 테스트는 분류에 따라 `tests/unit/` 또는 `tests/component/`의 독립 `.pro` 파일에
+각 테스트는 분류에 따라 `tests/unit/`, `tests/component/` 또는 `tests/ui/`의 독립 `.pro` 파일에
 production source와 test source를 명시한다. 집계 빌드의 실행 파일은 기본적으로 다음
 위치에 생성된다.
 
 ```text
 build\Desktop_Qt_6_MSVC2022_64bit-UnitTests\unit\bin\
 build\Desktop_Qt_6_MSVC2022_64bit-UnitTests\component\bin\
+build\Desktop_Qt_6_MSVC2022_64bit-UnitTests\ui\bin\
 ```
 
 테스트는 실제 MarkItDown executable, 대화상자, 네트워크 또는 developer별 절대

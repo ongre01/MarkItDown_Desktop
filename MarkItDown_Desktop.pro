@@ -32,7 +32,8 @@ HEADERS += \
     src/model/Document.h \
     src/rendering/MarkdownDocumentRenderer.h \
     src/rendering/MarkdownRenderState.h \
-    src/ui/ConversionErrorPresentation.h
+    src/ui/ConversionErrorPresentation.h \
+    src/ui/IMainWindowDialogs.h
 
 FORMS += \
     mainwindow.ui
