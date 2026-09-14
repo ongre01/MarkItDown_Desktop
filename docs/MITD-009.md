@@ -3,14 +3,15 @@
 ## 구현 범위
 
 - 원본 파일 없음과 지원하지 않는 확장자를 서로 다른 제목과 안내문으로 표시한다.
-- 파일을 연 뒤 원본이 삭제된 경우에도 변환 직전에 다시 확인하고 MarkItDown을
-  실행하지 않는다.
+- 자동 변환이 끝난 뒤 원본이 삭제된 상태에서 재변환을 요청해도 변환 직전에 다시
+  확인하고 MarkItDown을 실행하지 않는다.
 - `MarkItDownManager`가 실행 파일 없음, 프로세스 시작 실패, 비정상 종료,
   non-zero 종료 코드, 빈 변환 출력 및 그 밖의 프로세스 오류를
   `ConversionError`로 구분한다.
 - `DocumentController`는 오류 종류와 기술 세부 정보를 UI에 그대로 중계한다.
-- `MainWindow`는 오류 종류별 사용자 안내문을 만들고, 제공된 프로세스 오류와
-  `stderr`는 `Technical details` 영역에 함께 표시한다.
+- `ConversionErrorPresentation`은 오류 종류별 사용자 제목과 안내문을 만들고,
+  `MainWindow`는 제공된 프로세스 오류와 `stderr`를 `Technical details` 영역에 함께
+  표시한다.
 - Markdown 저장의 open, write, commit 실패는 저장 대상 경로 및 파일 시스템 오류와
   함께 `Markdown Save Failed`로 표시한다.
 
@@ -27,11 +28,18 @@ DocumentController
   └── ConversionError + 기술 세부 정보 중계
                 │
                 ▼
+ConversionErrorPresentation
+  └── 오류별 사용자 메시지와 제목 선택
+                │
+                ▼
 MainWindow
-  ├── 오류별 사용자 메시지와 제목 선택
   ├── 상태 표시줄 및 QMessageBox 갱신
   └── 원본 파일·확장자·저장 오류 처리
 ```
+
+원본 파일 검증과 저장 오류의 기술 처리는 후속 MITD-011에서
+`DocumentFileOperations`로 분리했고, `MainWindow`는 해당 결과의 사용자 표시를
+담당한다.
 
 ## 변환 오류 분류
 
@@ -57,8 +65,8 @@ MainWindow
 
 ## 확인 항목
 
-1. 존재하지 않는 경로를 열거나, 파일을 연 뒤 삭제하고 Convert를 눌렀을 때
-   `Source File Not Found`가 표시되는지 확인한다.
+1. 존재하지 않는 경로를 열거나, 자동 변환 완료 후 원본 파일을 삭제하고 `Convert`로
+   재변환했을 때 `Source File Not Found`가 표시되는지 확인한다.
 2. 지원하지 않는 확장자의 파일을 열거나 드롭했을 때 `Unsupported File Type`과 해당
    확장자가 표시되는지 확인한다.
 3. `MARKITDOWN_EXECUTABLE`을 존재하지 않는 경로로 설정한 뒤 변환하면

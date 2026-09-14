@@ -42,10 +42,13 @@ Save
 ## 관련 파일
 
 - 저장 액션과 화면 연결: `mainwindow.ui`
-- Save/Save As 및 UTF-8 파일 기록: `mainwindow.h`, `mainwindow.cpp`
+- Save/Save As 화면 흐름: `mainwindow.h`, `mainwindow.cpp`
+- 저장 경로와 UTF-8 원자 기록: `src/io/DocumentFileOperations.h`,
+  `src/io/DocumentFileOperations.cpp`
 - 저장 경로와 수정 상태: `src/model/Document.h`
 
-새 소스 파일이나 Qt 모듈은 추가하지 않는다.
+MITD-007 구현 당시에는 새 소스 파일이나 Qt 모듈을 추가하지 않았다. 파일 저장 로직은
+후속 MITD-011에서 기존 동작을 유지한 채 `DocumentFileOperations`로 분리했다.
 
 ## 확인 항목
 

@@ -1,10 +1,11 @@
 #include "mainwindow.h"
 #include "src/controller/DocumentController.h"
+#include "src/io/DocumentFileOperations.h"
 #include "src/rendering/MarkdownDocumentRenderer.h"
+#include "src/ui/ConversionErrorPresentation.h"
 #include "ui_mainwindow.h"
 
 #include <QAction>
-#include <QCoreApplication>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -14,8 +15,6 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPlainTextDocumentLayout>
-#include <QSaveFile>
-#include <QStringList>
 #include <QTextBrowser>
 #include <QTextCursor>
 #include <QTextDocument>
@@ -29,86 +28,11 @@ constexpr qsizetype MaximumEditorChunkSize = 64 * 1024;
 constexpr int EditorChunkDelayMilliseconds = 1;
 constexpr int PreviewUpdateDelayMilliseconds = 150;
 
-const QStringList &supportedDocumentExtensions()
-{
-    static const QStringList extensions{
-        QStringLiteral("pdf"),
-        QStringLiteral("docx"),
-        QStringLiteral("pptx"),
-        QStringLiteral("xlsx"),
-        QStringLiteral("xls"),
-        QStringLiteral("html"),
-        QStringLiteral("htm"),
-        QStringLiteral("csv"),
-        QStringLiteral("json"),
-        QStringLiteral("xml"),
-        QStringLiteral("txt")};
-
-    return extensions;
-}
-
-QString documentOpenFilter()
-{
-    QStringList patterns;
-    patterns.reserve(supportedDocumentExtensions().size());
-    for (const QString &extension : supportedDocumentExtensions()) {
-        patterns.append(QStringLiteral("*.%1").arg(extension));
-    }
-
-    return QCoreApplication::translate("MainWindow", "Documents (%1)")
-        .arg(patterns.join(QLatin1Char(' ')));
-}
-
-struct ConversionErrorPresentation
-{
-    QString title;
-    QString summary;
-};
-
-ConversionErrorPresentation conversionErrorPresentation(ConversionError error)
-{
-    switch (error) {
-    case ConversionError::AlreadyRunning:
-        return {QCoreApplication::translate("MainWindow", "Conversion Already Running"),
-                QCoreApplication::translate(
-                    "MainWindow", u8"다른 문서 변환이 이미 실행 중입니다.")};
-    case ConversionError::ExecutableNotFound:
-        return {QCoreApplication::translate("MainWindow", "MarkItDown Not Found"),
-                QCoreApplication::translate(
-                    "MainWindow",
-                    u8"MarkItDown 실행 파일을 찾을 수 없습니다. 앱 로컬 백엔드 설치 또는 "
-                    u8"MARKITDOWN_EXECUTABLE 설정을 확인하세요.")};
-    case ConversionError::FailedToStart:
-        return {QCoreApplication::translate("MainWindow", "MarkItDown Start Failed"),
-                QCoreApplication::translate(
-                    "MainWindow", u8"MarkItDown 프로세스를 시작하지 못했습니다.")};
-    case ConversionError::Crashed:
-        return {QCoreApplication::translate("MainWindow", "MarkItDown Crashed"),
-                QCoreApplication::translate(
-                    "MainWindow", u8"변환 중 MarkItDown 프로세스가 비정상 종료되었습니다.")};
-    case ConversionError::NonZeroExit:
-        return {QCoreApplication::translate("MainWindow", "Conversion Command Failed"),
-                QCoreApplication::translate(
-                    "MainWindow", u8"MarkItDown 변환 명령이 오류 종료 코드를 반환했습니다.")};
-    case ConversionError::EmptyOutput:
-        return {QCoreApplication::translate("MainWindow", "Empty Conversion Output"),
-                QCoreApplication::translate(
-                    "MainWindow", u8"MarkItDown 변환 결과가 비어 있습니다.")};
-    case ConversionError::ProcessFailure:
-        return {QCoreApplication::translate("MainWindow", "MarkItDown Execution Failed"),
-                QCoreApplication::translate(
-                    "MainWindow", u8"MarkItDown 프로세스 실행 중 오류가 발생했습니다.")};
-    }
-
-    return {QCoreApplication::translate("MainWindow", "Conversion Failed"),
-            QCoreApplication::translate("MainWindow", u8"문서 변환에 실패했습니다.")};
-}
-
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
-    , ui(new Ui::MainWindow)
+    , ui(std::make_unique<Ui::MainWindow>())
     , m_controller(new DocumentController(this))
     , m_renderer(new MarkdownDocumentRenderer)
     , m_editorChunkTimer(new QTimer(this))
@@ -139,7 +63,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_renderer,
             &MarkdownDocumentRenderer::rendered,
             this,
-            &MainWindow::onMarkdownRendered);
+            &MainWindow::onMarkdownRendered,
+            Qt::QueuedConnection);
     m_rendererThread.start();
 
     m_editorChunkTimer->setSingleShot(true);
@@ -176,16 +101,16 @@ MainWindow::MainWindow(QWidget *parent)
             this,
             &MainWindow::onMarkdownEditorTextChanged);
 
-    updateDocumentPresentation();
+    updateUiState();
 }
 
 MainWindow::~MainWindow()
 {
     invalidateRenderRequest();
     disconnect(m_renderer, nullptr, this, nullptr);
+    disconnect(this, nullptr, m_renderer, nullptr);
     m_rendererThread.quit();
     m_rendererThread.wait();
-    delete ui;
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent *event)
@@ -242,7 +167,8 @@ void MainWindow::openFile()
         this,
         tr("Open Document"),
         QString(),
-        documentOpenFilter());
+        tr("Documents (%1)")
+            .arg(DocumentFileOperations::supportedNameFilters().join(QLatin1Char(' '))));
 
     if (filePath.isEmpty()) {
         return;
@@ -257,56 +183,24 @@ bool MainWindow::openDocument(const QString &filePath)
         return false;
     }
 
-    const QFileInfo fileInfo(filePath);
-    if (fileInfo.isDir()) {
-        QMessageBox::warning(
-            this,
-            tr("Open Document"),
-            tr(u8"폴더는 열 수 없습니다."));
-        return false;
-    }
-
-    if (!fileInfo.exists()) {
-        QMessageBox::warning(
-            this,
-            tr("Source File Not Found"),
-            tr(u8"원본 파일을 찾을 수 없습니다.\n\n%1")
-                .arg(QDir::toNativeSeparators(filePath)));
-        return false;
-    }
-
-    if (!fileInfo.isFile()) {
-        QMessageBox::warning(
-            this,
-            tr("Cannot Open Source File"),
-            tr(u8"원본 파일을 열 수 없습니다.\n\n%1")
-                .arg(QDir::toNativeSeparators(filePath)));
-        return false;
-    }
-
-    if (!supportedDocumentExtensions().contains(fileInfo.suffix(),
-                                                 Qt::CaseInsensitive)) {
-        const QString extension = fileInfo.suffix().isEmpty()
-                                      ? tr(u8"확장자 없음")
-                                      : QStringLiteral(".%1").arg(fileInfo.suffix());
-        QMessageBox::warning(
-            this,
-            tr("Unsupported File Type"),
-            tr(u8"지원하지 않는 파일 형식입니다.\n\n확장자: %1")
-                .arg(extension));
+    const DocumentFileOperations::SourceDocumentValidation validation =
+        DocumentFileOperations::validateSourceDocument(filePath);
+    if (!validation.isValid()) {
+        showSourceDocumentError(validation);
         return false;
     }
 
     invalidateRenderRequest();
 
     m_document = Document{};
-    m_document.sourceFilePath = fileInfo.absoluteFilePath();
+    m_document.sourceFilePath = validation.absoluteFilePath;
     m_document.status = DocumentStatus::Ready;
 
     replaceEditorDocument();
     ui->markdownPreview->clear();
 
-    updateDocumentPresentation();
+    updateUiState();
+    convertFile();
     return true;
 }
 
@@ -316,17 +210,14 @@ void MainWindow::convertFile()
         return;
     }
 
-    const QFileInfo sourceInfo(m_document.sourceFilePath);
-    if (!sourceInfo.exists() || !sourceInfo.isFile()) {
-        m_document.status = DocumentStatus::Failed;
-        updateDocumentPresentation();
+    const DocumentFileOperations::SourceDocumentValidation validation =
+        DocumentFileOperations::validateSourceDocument(m_document.sourceFilePath);
+    if (!validation.isValid()) {
+        setDocumentStatus(DocumentStatus::Failed);
         ui->statusbar->showMessage(
-            tr("%1 | Source File Not Found").arg(sourceInfo.fileName()));
-        QMessageBox::warning(
-            this,
-            tr("Source File Not Found"),
-            tr(u8"원본 파일을 찾을 수 없습니다.\n\n%1")
-                .arg(QDir::toNativeSeparators(m_document.sourceFilePath)));
+            tr("%1 | Source File Not Found")
+                .arg(QFileInfo(m_document.sourceFilePath).fileName()));
+        showSourceDocumentError(validation);
         return;
     }
 
@@ -334,15 +225,14 @@ void MainWindow::convertFile()
 
     // Disable conversion-sensitive actions immediately so a second request cannot
     // be queued while QProcess is transitioning to its Starting state.
-    m_document.status = DocumentStatus::Converting;
-    updateDocumentPresentation();
+    setDocumentStatus(DocumentStatus::Converting);
 
     m_controller->convert(m_document.sourceFilePath);
 }
 
 void MainWindow::saveMarkdown()
 {
-    if (m_document.status != DocumentStatus::Completed || isDocumentBusy()) {
+    if (!canSaveMarkdown()) {
         return;
     }
 
@@ -356,15 +246,14 @@ void MainWindow::saveMarkdown()
 
 void MainWindow::saveMarkdownAs()
 {
-    if (m_document.status != DocumentStatus::Completed || isDocumentBusy()) {
+    if (!canSaveMarkdown()) {
         return;
     }
 
     QString suggestedFilePath = m_document.markdownFilePath;
     if (suggestedFilePath.isEmpty()) {
-        const QFileInfo sourceInfo(m_document.sourceFilePath);
-        suggestedFilePath = sourceInfo.dir().filePath(
-            sourceInfo.completeBaseName() + QStringLiteral(".md"));
+        suggestedFilePath =
+            DocumentFileOperations::suggestedMarkdownPath(m_document.sourceFilePath);
     }
 
     QString filePath = QFileDialog::getSaveFileName(
@@ -377,17 +266,12 @@ void MainWindow::saveMarkdownAs()
         return;
     }
 
-    if (QFileInfo(filePath).suffix().isEmpty()) {
-        filePath += QStringLiteral(".md");
-    }
-
-    saveMarkdownToFile(QFileInfo(filePath).absoluteFilePath());
+    saveMarkdownToFile(DocumentFileOperations::normalizedMarkdownPath(filePath));
 }
 
 void MainWindow::onConversionStarted()
 {
-    m_document.status = DocumentStatus::Converting;
-    updateDocumentPresentation();
+    setDocumentStatus(DocumentStatus::Converting);
 }
 
 void MainWindow::onConversionFinished(const QString &markdown)
@@ -398,17 +282,12 @@ void MainWindow::onConversionFinished(const QString &markdown)
     m_document.modified = false;
     m_document.status = DocumentStatus::Rendering;
 
-    const quint64 requestId = ++m_lastRenderRequestId;
-    m_activeRenderRequestId = requestId;
-    m_renderedHtml.clear();
-    m_editorInsertionFinished = false;
-    m_htmlRenderingFinished = false;
-    m_initialPreviewRendering = true;
+    const quint64 requestId = m_renderState.beginInitialRequest();
 
     replaceEditorDocument();
     startEditorInsertion(markdown);
 
-    updateDocumentPresentation();
+    updateUiState();
     emit renderMarkdownRequested(requestId, markdown);
 }
 
@@ -423,8 +302,7 @@ void MainWindow::onConversionFailed(ConversionError error, const QString &detail
         message += tr("\n\nTechnical details:\n%1").arg(normalizedDetails);
     }
 
-    m_document.status = DocumentStatus::Failed;
-    updateDocumentPresentation();
+    setDocumentStatus(DocumentStatus::Failed);
 
     const QString fileName = QFileInfo(m_document.sourceFilePath).fileName();
     ui->statusbar->showMessage(
@@ -434,18 +312,17 @@ void MainWindow::onConversionFailed(ConversionError error, const QString &detail
 
 void MainWindow::onMarkdownRendered(quint64 requestId, const QString &html)
 {
-    if (requestId != m_activeRenderRequestId) {
+    if (!m_renderState.accepts(requestId)) {
         return;
     }
 
-    if (m_initialPreviewRendering) {
-        m_renderedHtml = html;
-        m_htmlRenderingFinished = true;
+    if (m_renderState.isInitialRequest()) {
+        m_renderState.storeRenderedHtml(html);
         finishInitialPreviewIfReady();
         return;
     }
 
-    m_activeRenderRequestId = 0;
+    m_renderState.completeRequest();
     if (m_document.status != DocumentStatus::Converting) {
         ui->markdownPreview->setHtml(html);
     }
@@ -459,9 +336,9 @@ void MainWindow::onMarkdownEditorTextChanged()
 
     m_document.markdown = ui->markdownEditor->toPlainText();
     m_document.modified = true;
-    m_activeRenderRequestId = 0;
+    m_renderState.invalidate();
     m_previewUpdateTimer->start();
-    updateDocumentPresentation();
+    updateUiState();
 }
 
 void MainWindow::renderEditorPreview()
@@ -470,9 +347,7 @@ void MainWindow::renderEditorPreview()
         return;
     }
 
-    const quint64 requestId = ++m_lastRenderRequestId;
-    m_activeRenderRequestId = requestId;
-    m_initialPreviewRendering = false;
+    const quint64 requestId = m_renderState.beginUpdateRequest();
     emit renderMarkdownRequested(requestId, m_document.markdown);
 }
 
@@ -527,48 +402,82 @@ bool MainWindow::isDocumentBusy() const
            || m_document.status == DocumentStatus::Rendering;
 }
 
+bool MainWindow::canSaveMarkdown() const
+{
+    return m_document.status == DocumentStatus::Completed && !isDocumentBusy();
+}
+
 bool MainWindow::saveMarkdownToFile(const QString &filePath)
 {
-    QSaveFile outputFile(filePath);
-    const auto showSaveError = [this, &filePath](const QString &error) {
-        const QString details = error.trimmed().isEmpty()
-                                    ? tr(u8"알 수 없는 파일 시스템 오류입니다.")
-                                    : error.trimmed();
-        ui->statusbar->showMessage(
-            tr("Markdown Save Failed: %1").arg(details));
-        QMessageBox::critical(
-            this,
-            tr("Markdown Save Failed"),
-            tr(u8"Markdown 파일을 저장하지 못했습니다.\n\n경로:\n%1\n\n기술 세부 정보:\n%2")
-                .arg(QDir::toNativeSeparators(filePath), details));
-    };
-
-    if (!outputFile.open(QIODevice::WriteOnly)) {
-        showSaveError(outputFile.errorString());
+    const DocumentFileOperations::MarkdownWriteResult result =
+        DocumentFileOperations::writeMarkdownUtf8(filePath, m_document.markdown);
+    if (!result.succeeded) {
+        showMarkdownSaveError(result.absoluteFilePath, result.errorMessage);
         return false;
     }
 
-    const QByteArray utf8 = m_document.markdown.toUtf8();
-    if (outputFile.write(utf8) != utf8.size()) {
-        const QString error = outputFile.errorString();
-        outputFile.cancelWriting();
-        showSaveError(error);
-        return false;
-    }
-
-    if (!outputFile.commit()) {
-        showSaveError(outputFile.errorString());
-        return false;
-    }
-
-    m_document.markdownFilePath = QFileInfo(filePath).absoluteFilePath();
+    m_document.markdownFilePath = result.absoluteFilePath;
     m_document.modified = false;
     ui->markdownEditor->document()->setModified(false);
-    updateDocumentPresentation();
+    updateUiState();
     ui->statusbar->showMessage(
         tr("Saved: %1").arg(QFileInfo(m_document.markdownFilePath).fileName()));
 
     return true;
+}
+
+void MainWindow::showSourceDocumentError(
+    const DocumentFileOperations::SourceDocumentValidation &validation)
+{
+    switch (validation.error) {
+    case DocumentFileOperations::SourceDocumentError::Directory:
+        QMessageBox::warning(
+            this,
+            tr("Open Document"),
+            tr(u8"폴더는 열 수 없습니다."));
+        return;
+    case DocumentFileOperations::SourceDocumentError::NotFound:
+        QMessageBox::warning(
+            this,
+            tr("Source File Not Found"),
+            tr(u8"원본 파일을 찾을 수 없습니다.\n\n%1")
+                .arg(QDir::toNativeSeparators(validation.absoluteFilePath)));
+        return;
+    case DocumentFileOperations::SourceDocumentError::NotFile:
+        QMessageBox::warning(
+            this,
+            tr("Cannot Open Source File"),
+            tr(u8"원본 파일을 열 수 없습니다.\n\n%1")
+                .arg(QDir::toNativeSeparators(validation.absoluteFilePath)));
+        return;
+    case DocumentFileOperations::SourceDocumentError::UnsupportedExtension: {
+        const QString extension = validation.extension.isEmpty()
+                                      ? tr(u8"확장자 없음")
+                                      : QStringLiteral(".%1").arg(validation.extension);
+        QMessageBox::warning(
+            this,
+            tr("Unsupported File Type"),
+            tr(u8"지원하지 않는 파일 형식입니다.\n\n확장자: %1")
+                .arg(extension));
+        return;
+    }
+    case DocumentFileOperations::SourceDocumentError::None:
+        return;
+    }
+}
+
+void MainWindow::showMarkdownSaveError(const QString &filePath, const QString &error)
+{
+    const QString details = error.trimmed().isEmpty()
+                                ? tr(u8"알 수 없는 파일 시스템 오류입니다.")
+                                : error.trimmed();
+    ui->statusbar->showMessage(
+        tr("Markdown Save Failed: %1").arg(details));
+    QMessageBox::critical(
+        this,
+        tr("Markdown Save Failed"),
+        tr(u8"Markdown 파일을 저장하지 못했습니다.\n\n경로:\n%1\n\n기술 세부 정보:\n%2")
+            .arg(QDir::toNativeSeparators(filePath), details));
 }
 
 void MainWindow::replaceEditorDocument()
@@ -609,13 +518,23 @@ void MainWindow::startEditorInsertion(const QString &markdown)
 
 void MainWindow::finishEditorInsertion()
 {
-    if (!m_editorInsertionActive) {
+    if (!stopEditorInsertion()) {
         return;
     }
 
+    m_renderState.markEditorInsertionFinished();
+    finishInitialPreviewIfReady();
+}
+
+bool MainWindow::stopEditorInsertion()
+{
     m_editorChunkTimer->stop();
+
+    if (!m_editorInsertionActive) {
+        return false;
+    }
+
     m_editorInsertionActive = false;
-    m_editorInsertionFinished = true;
     m_pendingEditorText.clear();
     m_editorTextOffset = 0;
 
@@ -625,41 +544,36 @@ void MainWindow::finishEditorInsertion()
     ui->markdownEditor->setUpdatesEnabled(true);
     ui->markdownEditor->viewport()->update();
 
-    finishInitialPreviewIfReady();
+    return true;
 }
 
 void MainWindow::finishInitialPreviewIfReady()
 {
-    if (m_activeRenderRequestId == 0
-        || !m_initialPreviewRendering
-        || !m_editorInsertionFinished
-        || !m_htmlRenderingFinished) {
+    if (!m_renderState.isInitialRequestReady()) {
         return;
     }
 
-    ui->markdownPreview->setHtml(m_renderedHtml);
-    m_activeRenderRequestId = 0;
-    m_initialPreviewRendering = false;
-    m_renderedHtml.clear();
-    m_document.status = DocumentStatus::Completed;
+    ui->markdownPreview->setHtml(m_renderState.renderedHtml());
+    m_renderState.completeRequest();
     m_document.modified = false;
     ui->markdownEditor->document()->setModified(false);
-    updateDocumentPresentation();
+    setDocumentStatus(DocumentStatus::Completed);
 }
 
 void MainWindow::invalidateRenderRequest()
 {
     m_previewUpdateTimer->stop();
-    m_editorChunkTimer->stop();
-    m_activeRenderRequestId = 0;
-    m_initialPreviewRendering = false;
-    finishEditorInsertion();
-    m_htmlRenderingFinished = false;
-    m_editorInsertionFinished = false;
-    m_renderedHtml.clear();
+    stopEditorInsertion();
+    m_renderState.invalidate();
 }
 
-void MainWindow::updateDocumentPresentation()
+void MainWindow::setDocumentStatus(DocumentStatus status)
+{
+    m_document.status = status;
+    updateUiState();
+}
+
+void MainWindow::updateUiState()
 {
     const QString fileName = QFileInfo(m_document.sourceFilePath).fileName();
 
@@ -692,13 +606,29 @@ void MainWindow::updateDocumentPresentation()
         }
     }
 
-    const bool isBusy = m_document.status == DocumentStatus::Converting
-                        || m_document.status == DocumentStatus::Rendering;
-    const bool hasDocument = !m_document.sourceFilePath.isEmpty();
-    const bool hasMarkdown = m_document.status == DocumentStatus::Completed;
+    bool openEnabled = true;
+    bool convertEnabled = false;
+    bool saveEnabled = false;
 
-    ui->actionOpen->setEnabled(!isBusy);
-    ui->actionConvert->setEnabled(hasDocument && !isBusy);
-    ui->actionSave->setEnabled(hasMarkdown && !isBusy);
-    ui->actionSaveAs->setEnabled(hasMarkdown && !isBusy);
+    switch (m_document.status) {
+    case DocumentStatus::Empty:
+        break;
+    case DocumentStatus::Ready:
+    case DocumentStatus::Failed:
+        convertEnabled = true;
+        break;
+    case DocumentStatus::Converting:
+    case DocumentStatus::Rendering:
+        openEnabled = false;
+        break;
+    case DocumentStatus::Completed:
+        convertEnabled = true;
+        saveEnabled = true;
+        break;
+    }
+
+    ui->actionOpen->setEnabled(openEnabled);
+    ui->actionConvert->setEnabled(convertEnabled);
+    ui->actionSave->setEnabled(saveEnabled);
+    ui->actionSaveAs->setEnabled(saveEnabled);
 }

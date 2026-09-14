@@ -3,9 +3,12 @@
 
 #include "src/model/ConversionError.h"
 #include "src/model/Document.h"
+#include "src/rendering/MarkdownRenderState.h"
 
 #include <QMainWindow>
 #include <QThread>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -19,13 +22,17 @@ class QDragEnterEvent;
 class QDropEvent;
 class QTimer;
 
+namespace DocumentFileOperations {
+struct SourceDocumentValidation;
+}
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    MainWindow(QWidget *parent = nullptr);
-    ~MainWindow();
+    explicit MainWindow(QWidget *parent = nullptr);
+    ~MainWindow() override;
 
 signals:
     void renderMarkdownRequested(quint64 requestId,
@@ -50,30 +57,31 @@ private slots:
 
 private:
     bool isDocumentBusy() const;
+    bool canSaveMarkdown() const;
     bool openDocument(const QString &filePath);
     bool saveMarkdownToFile(const QString &filePath);
+    void showSourceDocumentError(
+        const DocumentFileOperations::SourceDocumentValidation &validation);
+    void showMarkdownSaveError(const QString &filePath, const QString &error);
     void replaceEditorDocument();
     void startEditorInsertion(const QString &markdown);
     void finishEditorInsertion();
+    bool stopEditorInsertion();
     void finishInitialPreviewIfReady();
     void invalidateRenderRequest();
-    void updateDocumentPresentation();
+    void setDocumentStatus(DocumentStatus status);
+    void updateUiState();
 
-    Ui::MainWindow *ui;
-    DocumentController *m_controller;
-    MarkdownDocumentRenderer *m_renderer;
-    QTimer *m_editorChunkTimer;
-    QTimer *m_previewUpdateTimer;
+    std::unique_ptr<Ui::MainWindow> ui;
+    DocumentController *const m_controller;
+    MarkdownDocumentRenderer *const m_renderer;
+    QTimer *const m_editorChunkTimer;
+    QTimer *const m_previewUpdateTimer;
     QThread m_rendererThread;
     Document m_document;
+    MarkdownRenderState m_renderState;
     QString m_pendingEditorText;
     qsizetype m_editorTextOffset = 0;
-    quint64 m_lastRenderRequestId = 0;
-    quint64 m_activeRenderRequestId = 0;
-    QString m_renderedHtml;
     bool m_editorInsertionActive = false;
-    bool m_editorInsertionFinished = false;
-    bool m_htmlRenderingFinished = false;
-    bool m_initialPreviewRendering = false;
 };
 #endif // MAINWINDOW_H

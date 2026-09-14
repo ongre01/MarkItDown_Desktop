@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QStringList>
 
@@ -103,7 +104,7 @@ MarkItDownManager::MarkItDownManager(QObject *parent)
     connect(m_process,
             &QProcess::readyReadStandardError,
             this,
-            &MarkItDownManager::readStandardError);
+            &MarkItDownManager::collectStandardError);
     connect(m_process,
             &QProcess::errorOccurred,
             this,
@@ -139,6 +140,11 @@ void MarkItDownManager::convert(const QString &filePath)
         return;
     }
 
+    QProcessEnvironment processEnvironment = QProcessEnvironment::systemEnvironment();
+    processEnvironment.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
+    processEnvironment.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
+    m_process->setProcessEnvironment(processEnvironment);
+
     m_process->start(program, QStringList{filePath});
 }
 
@@ -149,7 +155,7 @@ bool MarkItDownManager::isRunning() const
 
 void MarkItDownManager::processFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
-    readStandardError();
+    collectStandardError();
 
     if (m_failureReported) {
         return;
@@ -159,8 +165,7 @@ void MarkItDownManager::processFinished(int exitCode, QProcess::ExitStatus exitS
         const QString markdown = QString::fromUtf8(m_process->readAllStandardOutput());
 
         if (markdown.trimmed().isEmpty()) {
-            m_failureReported = true;
-            emit failed(ConversionError::EmptyOutput, diagnosticDetails());
+            reportProcessFailure(ConversionError::EmptyOutput);
             return;
         }
 
@@ -168,26 +173,18 @@ void MarkItDownManager::processFinished(int exitCode, QProcess::ExitStatus exitS
         return;
     }
 
-    m_failureReported = true;
-
     if (exitStatus == QProcess::CrashExit) {
-        emit failed(ConversionError::Crashed, diagnosticDetails());
+        reportProcessFailure(ConversionError::Crashed);
         return;
     }
 
-    emit failed(ConversionError::NonZeroExit,
-                diagnosticDetails(tr("Exit code: %1").arg(exitCode)));
+    reportProcessFailure(ConversionError::NonZeroExit,
+                         tr("Exit code: %1").arg(exitCode));
 }
 
 void MarkItDownManager::processError(QProcess::ProcessError error)
 {
-    readStandardError();
-
-    if (m_failureReported) {
-        return;
-    }
-
-    m_failureReported = true;
+    collectStandardError();
 
     ConversionError conversionError = ConversionError::ProcessFailure;
     switch (error) {
@@ -204,15 +201,26 @@ void MarkItDownManager::processError(QProcess::ProcessError error)
         break;
     }
 
-    emit failed(conversionError, diagnosticDetails(m_process->errorString()));
+    reportProcessFailure(conversionError, m_process->errorString());
 }
 
-void MarkItDownManager::readStandardError()
+void MarkItDownManager::collectStandardError()
 {
     m_standardError.append(m_process->readAllStandardError());
 }
 
-QString MarkItDownManager::standardErrorMessage() const
+void MarkItDownManager::reportProcessFailure(ConversionError error,
+                                             const QString &processDetails)
+{
+    if (m_failureReported) {
+        return;
+    }
+
+    m_failureReported = true;
+    emit failed(error, diagnosticDetails(processDetails));
+}
+
+QString MarkItDownManager::decodedStandardError() const
 {
     return QString::fromUtf8(m_standardError).trimmed();
 }
@@ -226,7 +234,7 @@ QString MarkItDownManager::diagnosticDetails(const QString &processDetails) cons
         details.append(normalizedProcessDetails);
     }
 
-    const QString standardError = standardErrorMessage();
+    const QString standardError = decodedStandardError();
     if (!standardError.isEmpty()) {
         details.append(tr("Standard error:\n%1").arg(standardError));
     }
