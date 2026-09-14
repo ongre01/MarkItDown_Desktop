@@ -7,7 +7,7 @@
 - `QProcess`의 `started`, `finished`, `errorOccurred`, `readyReadStandardError` 신호를 사용하며 동기 대기 함수는 사용하지 않는다.
 - 자식 프로세스에는 현재 실행 환경을 상속하되 `PYTHONUTF8=1`과 `PYTHONIOENCODING=utf-8`을 강제한다. 따라서 Windows 시스템 코드 페이지와 관계없이 MarkItDown의 한글 및 기타 Unicode stdout/stderr가 UTF-8로 전달된다.
 - 프로세스가 실제 시작되면 `started()`를 전달하고, 정상 종료(`NormalExit`이면서 종료 코드 0) 시 UTF-8 stdout을 `finished(markdown)`로 반환한다.
-- stderr는 실행 중 비동기적으로 누적한다. 시작 오류나 비정상 종료 시 누적된 stderr를 `failed(message)`로 전달하고, stderr가 없으면 `QProcess` 오류 또는 종료 상태를 설명하는 메시지를 전달한다.
+- stderr는 실행 중 비동기적으로 누적한다. 시작 오류나 비정상 종료 시 누적된 stderr를 `failed(ConversionError, details)`로 전달하고, stderr가 없으면 `QProcess` 오류 또는 종료 상태를 설명하는 기술 세부 정보를 전달한다.
 - 하나의 변환이 시작 중이거나 실행 중이면 추가 요청을 시작하지 않고 `Another conversion is already running.` 실패 신호를 보낸다.
 - 동일한 프로세스 오류에 대해 `errorOccurred`와 `finished`가 모두 발생해도 실패 신호를 중복 전달하지 않는다.
 
@@ -31,7 +31,7 @@
 3. `markitdown`을 찾을 수 있는 실행 환경에서 입력 파일을 변환해 `started()`와 `finished(markdown)`가 순서대로 전달되는지 확인한다.
 4. Windows 기본 코드 페이지가 UTF-8이 아닌 환경에서 `example/test.pptx`를 변환하고, 한글(`설계 자료`, `동작 기준`), 도형 기호(`◀`, `▶`, `▲`, `▼`), 단위 기호(`°C`)가 편집기와 미리보기에 손상 없이 표시되는지 확인한다.
 5. 저장한 Markdown을 UTF-8로 다시 읽어 위 문자가 동일하게 유지되는지 확인한다.
-6. 존재하지 않는 CLI 또는 변환에 실패하는 입력으로 `failed(message)`가 전달되는지 확인한다.
+6. 존재하지 않는 CLI 또는 변환에 실패하는 입력으로 `failed(ConversionError, details)`가 전달되는지 확인한다.
 7. 실행 중 `convert()`를 다시 호출해 두 번째 프로세스가 시작되지 않는지 확인한다.
 
 ## 다국어 출력 검증 기록

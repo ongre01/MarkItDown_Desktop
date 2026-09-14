@@ -4,7 +4,7 @@
 
 - 메뉴와 툴바가 공유하는 `Open` 액션을 단일 파일 선택 대화상자에 연결했다.
 - `QFileDialog::getOpenFileName()`을 사용해 한 번에 파일 하나만 선택하도록 했다.
-- 지원 확장자는 `pdf`, `docx`, `pptx`, `xlsx`, `xls`, `html`, `htm`, `csv`, `json`, `xml`, `txt`로 제한했다.
+- 지원 확장자는 `pdf`, `docx`, `pptx`, `xlsx`, `xls`, `html`, `htm`, `csv`, `json`, `xml`, `txt`로 제한했다. 현재 확장자와 경로 검증은 후속 리팩터링에서 `src/io/DocumentFileOperations`로 분리되어 Open과 Drag & Drop이 같은 기준을 사용한다.
 - 파일 선택 시 기존 `Document`를 초기화하고, 선택한 파일의 절대 경로를 `sourceFilePath`에 저장한 뒤 상태를 `DocumentStatus::Ready`로 변경한다.
 - 문서 등록과 편집기·미리보기 초기화가 끝나면 기존 `Convert` 경로를 즉시 호출해 MarkItDown 변환을 자동으로 시작한다.
 - 창 제목은 `MarkItDown Viewer - <파일명>`으로 갱신되며 상태 표시줄은 자동 변환 상태인 `<파일명> | Converting...`을 표시한다.

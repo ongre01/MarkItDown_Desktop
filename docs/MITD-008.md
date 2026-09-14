@@ -42,9 +42,12 @@ MarkItDown 변환도 즉시 시작한다. 수정된 Markdown이 있을 때 저�
 ## 관련 파일
 
 - 드래그 진입, 드롭 검증, 공통 문서 열기: `mainwindow.h`, `mainwindow.cpp`
+- 공통 경로 및 확장자 검증: `src/io/DocumentFileOperations.h`,
+  `src/io/DocumentFileOperations.cpp`
 - 구현 및 수동 확인 절차: `docs/MITD-008.md`
 
-새 소스 파일이나 Qt 모듈은 추가하지 않는다.
+MITD-008 구현 당시에는 새 소스 파일이나 Qt 모듈을 추가하지 않았다. 공통 파일 검증은
+후속 MITD-011에서 `DocumentFileOperations`로 분리했다.
 
 ## 확인 항목
 

@@ -12,16 +12,22 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     src/controller/DocumentController.cpp \
+    src/io/DocumentFileOperations.cpp \
     src/markitdown/MarkItDownManager.cpp \
-    src/rendering/MarkdownDocumentRenderer.cpp
+    src/rendering/MarkdownDocumentRenderer.cpp \
+    src/rendering/MarkdownRenderState.cpp \
+    src/ui/ConversionErrorPresentation.cpp
 
 HEADERS += \
     mainwindow.h \
     src/controller/DocumentController.h \
+    src/io/DocumentFileOperations.h \
     src/markitdown/MarkItDownManager.h \
     src/model/ConversionError.h \
     src/model/Document.h \
-    src/rendering/MarkdownDocumentRenderer.h
+    src/rendering/MarkdownDocumentRenderer.h \
+    src/rendering/MarkdownRenderState.h \
+    src/ui/ConversionErrorPresentation.h
 
 FORMS += \
     mainwindow.ui

@@ -9,8 +9,9 @@
   non-zero 종료 코드, 빈 변환 출력 및 그 밖의 프로세스 오류를
   `ConversionError`로 구분한다.
 - `DocumentController`는 오류 종류와 기술 세부 정보를 UI에 그대로 중계한다.
-- `MainWindow`는 오류 종류별 사용자 안내문을 만들고, 제공된 프로세스 오류와
-  `stderr`는 `Technical details` 영역에 함께 표시한다.
+- `ConversionErrorPresentation`은 오류 종류별 사용자 제목과 안내문을 만들고,
+  `MainWindow`는 제공된 프로세스 오류와 `stderr`를 `Technical details` 영역에 함께
+  표시한다.
 - Markdown 저장의 open, write, commit 실패는 저장 대상 경로 및 파일 시스템 오류와
   함께 `Markdown Save Failed`로 표시한다.
 
@@ -27,11 +28,18 @@ DocumentController
   └── ConversionError + 기술 세부 정보 중계
                 │
                 ▼
+ConversionErrorPresentation
+  └── 오류별 사용자 메시지와 제목 선택
+                │
+                ▼
 MainWindow
-  ├── 오류별 사용자 메시지와 제목 선택
   ├── 상태 표시줄 및 QMessageBox 갱신
   └── 원본 파일·확장자·저장 오류 처리
 ```
+
+원본 파일 검증과 저장 오류의 기술 처리는 후속 MITD-011에서
+`DocumentFileOperations`로 분리했고, `MainWindow`는 해당 결과의 사용자 표시를
+담당한다.
 
 ## 변환 오류 분류
 

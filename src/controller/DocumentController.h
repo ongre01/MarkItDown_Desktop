@@ -24,7 +24,7 @@ signals:
     void conversionFailed(ConversionError error, const QString &details);
 
 private:
-    MarkItDownManager *m_markItDown;
+    MarkItDownManager *const m_markItDown;
 };
 
 #endif // DOCUMENTCONTROLLER_H

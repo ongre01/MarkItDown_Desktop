@@ -54,6 +54,8 @@ Markdown 파싱은 `MarkdownDocumentRenderer`가 별도 `QThread`에서 수행�
 - 상태 및 화면 연동: `mainwindow.h`, `mainwindow.cpp`
 - 비동기 Markdown 파싱: `src/rendering/MarkdownDocumentRenderer.h`,
   `src/rendering/MarkdownDocumentRenderer.cpp`
+- 렌더 요청 ID와 초기 완료 조건: `src/rendering/MarkdownRenderState.h`,
+  `src/rendering/MarkdownRenderState.cpp`
 
 WebEngine 모듈, 임시 HTML 파일, 외부 Markdown 라이브러리는 필요하지 않다.
 

@@ -31,13 +31,15 @@ private slots:
 
     void processError(QProcess::ProcessError error);
 
-    void readStandardError();
+    void collectStandardError();
 
 private:
+    void reportProcessFailure(ConversionError error,
+                              const QString &processDetails = {});
     QString diagnosticDetails(const QString &processDetails = {}) const;
-    QString standardErrorMessage() const;
+    QString decodedStandardError() const;
 
-    QProcess *m_process;
+    QProcess *const m_process;
     QByteArray m_standardError;
     bool m_failureReported = false;
 };

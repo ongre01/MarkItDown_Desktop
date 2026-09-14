@@ -20,6 +20,8 @@
 - 미리보기는 `QTextBrowser`를 사용한다. 편집기 삽입과 작업 스레드의 Markdown 파싱이 모두 끝난 뒤 생성된 HTML을 표시한다.
 - 요청마다 증가하는 렌더 ID를 사용한다. 현재 문서와 ID가 다른 완료 신호는 폐기한다.
 - 편집기 삽입과 HTML 생성이 모두 끝난 뒤 문서 상태를 `Completed`로 바꾸고 액션을 다시 활성화한다.
+- 후속 MITD-011 리팩터링에서 렌더 ID와 두 완료 조건은
+  `src/rendering/MarkdownRenderState` 값 객체로 묶었다.
 
 ## 상태별 UI
 
