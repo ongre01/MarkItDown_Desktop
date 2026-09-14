@@ -45,15 +45,17 @@ MarkItDown 백엔드를 준비한다. 이 두 파일은 `.pro`의 `DISTFILES`에
 
 현재 `MainWindow`, `DocumentController`, `MarkItDownManager`의 비동기 변환 흐름은
 연결되어 있다. `tests/tests.pro`에는 GUI와 외부 프로세스에 의존하지 않는 다음 Qt Test
-Unit Test가 등록되어 있다.
+Unit/Component Test가 등록되어 있다.
 
 - `tst_DocumentFileOperations`
 - `tst_MarkdownRenderState`
 - `tst_ConversionErrorPresentation`
 - `tst_MarkdownDocumentRenderer`
+- `tst_MarkItDownManager` (Fake process/resolver 기반 Component Test)
 
-`DocumentController`, `MarkItDownManager`, `MainWindow` 자동화 테스트는 아직 없으므로
-Unit Test와 애플리케이션 빌드 성공만으로 UI 변환 기능까지 검증했다고 표현해서는 안
+`DocumentController`, `MainWindow` 자동화 테스트는 아직 없다. `MarkItDownManager`는
+실제 executable을 사용하지 않는 Component Test로 lifecycle과 오류 계약을 검증한다.
+이 테스트와 애플리케이션 빌드 성공만으로 UI 변환 기능까지 검증했다고 표현해서는 안
 된다.
 
 ## 3. 권장 개발 환경
@@ -294,11 +296,13 @@ finally {
 }
 ```
 
-각 테스트는 `tests/unit/`의 독립 `.pro` 파일에 production source와 test source를
-명시한다. 집계 빌드의 실행 파일은 기본적으로 다음 위치에 생성된다.
+각 테스트는 분류에 따라 `tests/unit/` 또는 `tests/component/`의 독립 `.pro` 파일에
+production source와 test source를 명시한다. 집계 빌드의 실행 파일은 기본적으로 다음
+위치에 생성된다.
 
 ```text
 build\Desktop_Qt_6_MSVC2022_64bit-UnitTests\unit\bin\
+build\Desktop_Qt_6_MSVC2022_64bit-UnitTests\component\bin\
 ```
 
 테스트는 실제 MarkItDown executable, 대화상자, 네트워크 또는 developer별 절대
