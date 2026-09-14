@@ -2,7 +2,9 @@
 
 ## 구현 내용
 
-- `MarkItDownManager`가 자식 `QProcess` 하나를 소유하고 `markitdown <입력 파일>` 형식으로 CLI를 실행한다.
+- `MarkItDownManager`는 production 기본 구현인 `QProcessRunner`를 소유하고
+  `markitdown <입력 파일>` 형식으로 CLI를 실행한다. `QProcessRunner`가 실제 자식
+  `QProcess` 하나를 소유한다.
 - 프로그램과 인자를 분리해 `QProcess::start()`에 전달하므로 공백이 포함된 파일 경로도 하나의 인자로 처리된다.
 - `QProcess`의 `started`, `finished`, `errorOccurred`, `readyReadStandardError` 신호를 사용하며 동기 대기 함수는 사용하지 않는다.
 - 자식 프로세스에는 현재 실행 환경을 상속하되 `PYTHONUTF8=1`과 `PYTHONIOENCODING=utf-8`을 강제한다. 따라서 Windows 시스템 코드 페이지와 관계없이 MarkItDown의 한글 및 기타 Unicode stdout/stderr가 UTF-8로 전달된다.
@@ -13,7 +15,7 @@
 
 ## MarkItDown CLI 탐색
 
-`MarkItDownManager`는 다음 순서로 실행 파일을 찾는다.
+production 기본 `MarkItDownExecutableResolver`는 다음 순서로 실행 파일을 찾는다.
 
 1. `MARKITDOWN_EXECUTABLE` 환경 변수로 지정한 파일 또는 명령
 2. 애플리케이션 실행 파일과 같은 폴더의 `python-venv`
@@ -21,6 +23,10 @@
 4. 애플리케이션 디렉터리와 현재 작업 디렉터리의 상위 경로에서 발견되는 개발용 `python-venv` 또는 `build/python-venv`
 
 어느 경로에서도 찾지 못하면 설치, `PATH`, 환경 변수 설정 방법을 포함한 오류를 반환한다. 앱 로컬 환경은 빌드 후처리에서 자동으로 준비되며 PATH보다 우선하므로 빌드에서 검증한 버전을 사용한다. 마지막 단계는 저장소의 수동 개발 환경을 Qt Creator 또는 빌드 출력 디렉터리에서 사용할 수 있게 하는 개발 편의 기능이다.
+
+UT-002에서 process 실행은 `IProcessRunner`, executable 탐색은
+`IMarkItDownExecutableResolver` 경계로 분리했다. production 기본 생성 경로와 위 탐색
+정책은 유지되며, 테스트는 실제 프로세스와 개발환경 대신 Fake 구현을 주입할 수 있다.
 
 이 티켓은 CLI 실행 계층만 구현한다. `MainWindow`의 Convert 액션과 문서 상태를 이 클래스에 연결하는 작업은 컨트롤러/UI 통합 티켓의 범위다.
 

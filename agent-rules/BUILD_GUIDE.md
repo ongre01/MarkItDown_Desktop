@@ -33,8 +33,8 @@
 
 현재 `.pro` 파일에 등록된 입력은 다음과 같다.
 
-- 소스: `main.cpp`, `mainwindow.cpp`, `src/controller/DocumentController.cpp`, `src/io/DocumentFileOperations.cpp`, `src/markitdown/MarkItDownManager.cpp`, `src/rendering/MarkdownDocumentRenderer.cpp`, `src/rendering/MarkdownRenderState.cpp`, `src/ui/ConversionErrorPresentation.cpp`
-- 헤더: `mainwindow.h`, `src/controller/DocumentController.h`, `src/io/DocumentFileOperations.h`, `src/model/ConversionError.h`, `src/model/Document.h`, `src/markitdown/MarkItDownManager.h`, `src/rendering/MarkdownDocumentRenderer.h`, `src/rendering/MarkdownRenderState.h`, `src/ui/ConversionErrorPresentation.h`
+- 소스: `main.cpp`, `mainwindow.cpp`, `src/controller/DocumentController.cpp`, `src/io/DocumentFileOperations.cpp`, `src/markitdown/MarkItDownExecutableResolver.cpp`, `src/markitdown/MarkItDownManager.cpp`, `src/markitdown/ProcessRunner.cpp`, `src/rendering/MarkdownDocumentRenderer.cpp`, `src/rendering/MarkdownRenderState.cpp`, `src/ui/ConversionErrorPresentation.cpp`
+- 헤더: `mainwindow.h`, `src/controller/DocumentController.h`, `src/io/DocumentFileOperations.h`, `src/model/ConversionError.h`, `src/model/Document.h`, `src/markitdown/MarkItDownExecutableResolver.h`, `src/markitdown/MarkItDownManager.h`, `src/markitdown/ProcessRunner.h`, `src/rendering/MarkdownDocumentRenderer.h`, `src/rendering/MarkdownRenderState.h`, `src/ui/ConversionErrorPresentation.h`
 - 폼: `mainwindow.ui`
 
 Windows 빌드는 추가로 `scripts/install_markitdown_backend.ps1`와
@@ -371,7 +371,14 @@ $markitdown = Join-Path $venvDir 'Scripts\markitdown.exe'
 
 전체 형식 지원이 필요하지 않은 작업에서는 필요한 extra만 설치할 수 있다. 그러나 프로젝트의 목표가 MarkItDown 지원 형식을 폭넓게 제공하는 것이므로 기본 개발 환경은 `[all]`을 기준으로 한다.
 
-`MarkItDownManager`는 `QProcess`로 `markitdown <입력 파일>`을 비동기 실행한다. CLI는 `MARKITDOWN_EXECUTABLE` 환경 변수, 실행 파일과 같은 폴더의 `python-venv`, 실행 환경의 `PATH`, 실행 파일 또는 현재 작업 디렉터리 상위에 있는 개발용 `python-venv`/`build\python-venv` 순서로 찾는다. 개발 및 후속 연동 작업에서는 다음을 지킨다.
+`MarkItDownManager`는 production 기본 구현인 `QProcessRunner`를 통해
+`markitdown <입력 파일>`을 비동기 실행한다. 실행 경계는 `IProcessRunner`, CLI
+탐색은 `IMarkItDownExecutableResolver`로 주입할 수 있으며 기본 실행에서는 각각
+`QProcessRunner`와 `MarkItDownExecutableResolver`를 사용한다. CLI는
+`MARKITDOWN_EXECUTABLE` 환경 변수, 실행 파일과 같은 폴더의 `python-venv`, 실행
+환경의 `PATH`, 실행 파일 또는 현재 작업 디렉터리 상위에 있는 개발용
+`python-venv`/`build\python-venv` 순서로 찾는다. 개발 및 후속 연동 작업에서는
+다음을 지킨다.
 
 - 전역 PATH에 MarkItDown이 있다고 가정하지 않는다.
 - 빌드 결과에 준비된 앱 로컬 CLI를 PATH보다 우선해 빌드에서 검증한 버전을 사용한다.

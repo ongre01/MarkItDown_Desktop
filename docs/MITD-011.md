@@ -12,7 +12,9 @@ MainWindow
   ├── MarkdownRenderState ───── 렌더 요청 ID와 초기 렌더 완료 조건
   ├── ConversionErrorPresentation ─ 변환 오류의 UI 제목과 요약
   └── DocumentController
-          └── MarkItDownManager ── QProcess 실행과 기술 오류 분류
+          └── MarkItDownManager ── process 결과와 기술 오류 분류
+                  ├── IProcessRunner ── production QProcess 실행 경계
+                  └── IMarkItDownExecutableResolver ── CLI 탐색 경계
 ```
 
 Batch, 다중 문서, Tab, Queue, Database, LLM, RAG, Project Library는 추가하지 않았다.
@@ -54,8 +56,10 @@ Markdown 변환 완료
 ## 소유권과 Signal/Slot
 
 - `Ui::MainWindow`는 `std::unique_ptr`로 소유해 수동 `delete`를 제거했다.
-- `DocumentController`, 두 `QTimer`, `MarkItDownManager` 및 `QProcess`는 기존처럼 부모
-  `QObject`가 소유한다. 생성 후 다시 대입하지 않는 QObject 포인터는 const 포인터로
+- `DocumentController`, 두 `QTimer` 및 `MarkItDownManager`는 부모 `QObject`가
+  소유한다. Manager는 주입된 `IProcessRunner`와 executable resolver를
+  `std::unique_ptr`로 소유하고, production `QProcessRunner`는 실제 `QProcess`를 자식
+  `QObject`로 소유한다. 생성 후 다시 대입하지 않는 QObject 포인터는 const 포인터로
   표시했다.
 - 작업 스레드로 이동하는 `MarkdownDocumentRenderer`는 부모를 두지 않고,
   `QThread::finished`에서 `deleteLater()`로 정리한다.

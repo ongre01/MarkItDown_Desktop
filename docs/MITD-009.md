@@ -19,9 +19,12 @@
 
 ```text
 MarkItDownManager
-  ├── 실행 파일 탐색 및 QProcess 오류 분류
+  ├── Resolver/Runner 조정 및 process 오류 분류
   ├── 종료 코드와 빈 stdout 검사
-  └── QProcess 오류 문자열 및 stderr 수집
+  └── process 오류 문자열 및 stderr 수집
+        │
+        ├── IMarkItDownExecutableResolver ── 실행 파일 탐색
+        └── IProcessRunner ── production QProcess 실행 경계
                 │
                 ▼
 DocumentController
