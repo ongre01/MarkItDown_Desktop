@@ -8,4 +8,4 @@
 - For every implemented task, create or update the corresponding documentation under the docs/ directory.
 - Do not create implementation documentation outside the docs/ directory.
 - Keep the documentation consistent with the actual implementation.
-
+- For tasks involving automated tests, unit tests, component tests, or UI tests, read and follow agent-rules/UNIT_TEST_GUIDE.md before making changes.
